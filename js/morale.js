@@ -125,11 +125,12 @@
 
   // ---------- Abilities ----------
 
-  // Enemy ground units within 2 squares of your capital.
+  // Enemy ground units this side can see within 2 squares of its capital.
   SF.capitalThreatened = function (state, owner) {
     var cap = SF.capitalOf(owner);
+    var vision = SF.vision(state, owner);
     return state.units.some(function (u) {
-      return u.owner !== owner && SF.isGround(u) && SF.distance(u.at, cap) <= 2;
+      return u.owner !== owner && SF.isGround(u) && SF.distance(u.at, cap) <= 2 && SF.canSee(vision, u);
     });
   };
 

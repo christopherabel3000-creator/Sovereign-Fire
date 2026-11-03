@@ -6,7 +6,7 @@ Sovereign Fire is a turn-based modern war between two nations. Both players secr
 
 ## Modes
 
-- **Versus computer:** a simple AI that plays sensibly, improved over time.
+- **Versus computer:** Easy, Normal, or Hard, chosen when starting a game.
 - **Online versus a friend:** live play with no turn timer. Each player presses a button to lock in their turn. Players hear a message when the opponent has locked in. Games save automatically and can be resumed later.
 
 ## Pre-game setup
@@ -368,6 +368,31 @@ These numbers are starting points for playtesting.
 - Each satellite makes your missiles 5% more accurate and your missile defense 5% more likely to stop missiles, up to 20%.
 - Only anti-satellite missiles can destroy them.
 
+## Computer opponent, first version
+
+**Fair play.** The computer gives its orders through the same rules as a person, gets no bonuses at any difficulty, and only knows what its side can see. Difficulty changes how well it plays, not what it has.
+
+**Each turn, it:**
+1. Sets its workforce and keeps its research queue filled, in an order that suits its government.
+2. Uses its government's ability when it makes sense.
+3. Keeps garrisons in its cities, more in the capital and in any city with enemy troops nearby, and pulls in reinforcements when threatened.
+4. Fires artillery and destroyers at visible enemies, and missiles at big visible armies.
+5. Attacks any enemy square it can reach when the odds are good enough, combining nearby stacks into one attack.
+6. Moves the rest of its army toward the nearest enemy cities along real routes, waiting to gather a big enough force before advancing, and avoiding much stronger enemy armies.
+7. Sends scout planes over enemy cities near the front, fighters over its main attack or most threatened city, and bombers at its attack target or the biggest enemy army it can see.
+8. Attacks enemy ships when the odds are good.
+9. Builds infantry where cities are threatened, then about one tank for every two infantry, plus artillery, planes, missiles, and new buildings.
+10. Uses nuclear weapons only to strike back after being hit first, or when its own morale is below 25.
+
+**Difficulty.**
+- Easy: attacks only at 80% odds or better, sometimes hesitates, does not gather or combine forces, and does not use fighters or bombers.
+- Normal: attacks at 60% odds or better, combines stacks, gathers 3 units before advancing, and uses air power.
+- Hard: attacks at 50% odds or better, gathers 4 units, invades by sea, and fires missile salvos at enemy cities.
+
+**Starting buildings by government.** A Military State starts with 6 factories and 2 refineries. A Scientific Republic starts with 5 labs. The others use the balanced plan.
+
+**From simulated games** between computer players, wars ended between turns 23 and 46, by surrender or conquest. A Military State's early rush beat a Scientific Republic by turn 32, which is worth watching in playtesting.
+
 ## Economy, first version
 
 These numbers are starting points for playtesting.
@@ -448,5 +473,5 @@ Each step ends with something playable to test on iPhone and computer.
 8. **Science and research.** (Built.)
 9. **Morale, government types, and victory conditions.** (Built.)
 10. **Nuclear weapons.** (Built.)
-11. **A smarter computer opponent.**
+11. **A smarter computer opponent.** (Built.)
 12. **Online play with Firebase,** in the game's own section of the database.

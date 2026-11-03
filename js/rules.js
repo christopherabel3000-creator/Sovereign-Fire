@@ -2,10 +2,11 @@
 (function (SF) {
   "use strict";
 
-  SF.newGame = function (mode) {
+  SF.newGame = function (mode, difficulty) {
     var state = {
       version: 1,
       mode: mode,          // "computer" or "hotseat"
+      difficulty: difficulty || "normal",
       turn: 1,
       phase: "setup",      // "setup", "orders" or "handoff"
       afterHandoff: null,  // the phase that follows a handoff
@@ -35,7 +36,7 @@
     if (mode === "computer") {
       var gov = SF.GOVERNMENT_ORDER[Math.floor(Math.random() * SF.GOVERNMENT_ORDER.length)];
       SF.setNation(state, 1, SF.randomNationName(gov), gov);
-      SF.applyPlan(state, 1, SF.defaultPlan(1));
+      SF.applyPlan(state, 1, SF.computerPlan(1, gov));
     }
     return state;
   };
@@ -657,10 +658,9 @@
     return Math.max(0.05, base - (SF.BOMBARD_TERRAIN[terrain] || 0));
   };
 
-  // The computer opponent. For now it only defends, so it gives no orders.
+  // The computer opponent's orders. See ai.js.
   SF.computerOrders = function (state) {
-    state.orders[1] = [];
-    SF.computerEconomy(state);
+    SF.aiTurn(state, 1, state.difficulty);
   };
 
   // ---------- Turn resolution ----------

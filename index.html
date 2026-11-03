@@ -15,6 +15,15 @@
     <h2 id="setup-heading" tabindex="-1">New game</h2>
     <ul class="plain">
       <li id="continue-item" hidden><button class="act primary" type="button" id="continue-btn"></button></li>
+      <li>
+        <label>Computer difficulty
+          <select id="new-difficulty">
+            <option value="easy">Easy</option>
+            <option value="normal" selected>Normal</option>
+            <option value="hard">Hard</option>
+          </select>
+        </label>
+      </li>
       <li><button class="act" type="button" id="new-computer">Play against the computer</button></li>
       <li><button class="act" type="button" id="new-hotseat">Pass and play with a friend</button></li>
     </ul>
@@ -113,6 +122,7 @@
 <script src="js/economy.js"></script>
 <script src="js/tech.js"></script>
 <script src="js/morale.js"></script>
+<script src="js/ai.js"></script>
 <script src="js/ui.js"></script>
 </body>
 </html>

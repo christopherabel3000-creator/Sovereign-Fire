@@ -1731,7 +1731,8 @@
     var saved = loadSave();
     $("continue-item").hidden = !saved;
     if (saved) {
-      var kind = saved.mode === "hotseat" ? "pass and play" : "against the computer";
+      var kind = saved.mode === "hotseat" ? "pass and play" :
+        "against the computer, " + (SF.DIFFICULTIES[saved.difficulty || "normal"].name).toLowerCase();
       $("continue-btn").textContent = "Continue saved game, turn " + saved.turn + ", " + kind;
     }
   }
@@ -1776,7 +1777,7 @@
   }
 
   function startGame(mode) {
-    state = SF.newGame(mode);
+    state = SF.newGame(mode, $("new-difficulty").value);
     selected = null;
     plan = null;
     planNation = null;
