@@ -91,7 +91,7 @@
 <body>
 <main>
   <h1>Sovereign Fire</h1>
-  <p class="subtitle">Map preview. Your nation holds the west, the enemy holds the east.</p>
+  <p class="subtitle">Map preview. Your nation holds the north, the enemy holds the south.</p>
 
   <h2 id="selected-heading">Selected square</h2>
   <div class="panel" id="details" aria-live="polite">
@@ -127,26 +127,18 @@
   var SIZE = 16;
   var COLS = "ABCDEFGHIJKLMNOP";
 
-  // West half of the map, columns A to H, rows 1 to 16.
-  // The east half is a mirror image, so both nations have identical terrain.
+  // North half of the map, rows 1 to 8, columns A to P.
+  // The south half is a mirror image, so both nations have identical terrain.
   // P plains, F forest, M mountains, R river, B bridge, C city, K capital, ~ ocean
-  var WEST = [
-    "MFPPC~~~",
-    "MFPPP~~~",
-    "FPCPPP~~",
-    "FPPRPP~~",
-    "PPPRPC~~",
-    "PKPBPP~~",
-    "PPPRPP~~",
-    "FPFRFP~~",
-    "FPPRPC~~",
-    "MMPBPP~~",
-    "MFPRPPP~",
-    "PPCRPPPP",
-    "FPPRFPMP",
-    "PPPBPFMP",
-    "FPCRPPPP",
-    "MFPRFPFP"
+  var NORTH = [
+    "MMFFPPPFFMMPFPFM",
+    "FFPPPKPPPMFPPPPF",
+    "PPCPPPPFPPPCPPCP",
+    "PPPRRBRRRBRRRBRR",
+    "CPPPPPPFPPPPFPPF",
+    "~~PPCPPPCPPPPFPP",
+    "~~~~~~~~~~PPMMPF",
+    "~~~~~~~~~~~PPPPP"
   ];
 
   var TERRAIN = {
@@ -175,8 +167,8 @@
   for (var r = 0; r < SIZE; r++) {
     var row = [];
     for (var c = 0; c < SIZE; c++) {
-      var westCol = c < 8 ? c : SIZE - 1 - c;
-      var code = WEST[r].charAt(westCol);
+      var northRow = r < 8 ? r : SIZE - 1 - r;
+      var code = NORTH[northRow].charAt(c);
       var t = TERRAIN[code];
       row.push({
         row: r,
@@ -184,7 +176,7 @@
         id: COLS.charAt(c) + (r + 1),
         code: code,
         terrain: t,
-        owner: t.key === "ocean" ? null : (c < 8 ? "yours" : "enemy")
+        owner: t.key === "ocean" ? null : (r < 8 ? "yours" : "enemy")
       });
     }
     grid.push(row);
