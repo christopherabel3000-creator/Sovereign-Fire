@@ -121,12 +121,24 @@ Combat mixes tactics and luck. Larger numbers matter, and units that target a we
 
 ## Fog of war
 
-- Enemy cities are always visible, but not the units inside them.
-- Your units see enemy units on the squares next to them.
+- Enemy cities are always shown on the map, but not the units inside them.
+- You see all of your own land.
+- Your ground units see every square touching them, diagonals included. Cities you hold see the squares around them too.
 - Scout planes and satellites see enemy units across a wider area. They are the only way to scout at long range.
 - Artillery range and missile range do not reveal enemy units.
-- Special forces and submarines are harder to spot.
+- Special forces are only spotted by ground units right next to them. Your own land, your cities, and scout planes do not reveal them. Submarines will be hard to spot too.
+- Squares you cannot see are marked hidden. A move onto a hidden square holding enemy units becomes a surprise battle.
 - You only learn the result of an attack if you can see the target square. A missile fired at an unseen square tells you nothing.
+- Each side's turn report only includes what that side would know. For example, you hear about an enemy scout plane only if it flew over squares you can see, or your guns shot it down.
+
+### Scout planes, first version
+
+- Scout planes are based in cities. They do not hold squares or fight in ground battles.
+- Each turn, a scout plane can fly over any square up to 10 squares from its base.
+- It flies after the turn's battles and reveals a 5 by 5 area around that square until the end of your next orders.
+- Each enemy anti-aircraft gun in that area has a 20% chance to shoot it down. If it is shot down, it reveals nothing.
+- Planes in a city the enemy captures are destroyed on the ground.
+- Each side starts with 2 scout planes, at the capital and at L3.
 
 ## Science
 
@@ -230,9 +242,9 @@ These numbers are starting points for playtesting.
 
 Each side starts with the mirror image of this army. South's squares are the same column, mirrored row.
 
-- **F2, capital:** 3 infantry and 1 anti-aircraft gun.
+- **F2, capital:** 3 infantry, 1 anti-aircraft gun, and 1 scout plane.
 - **C3:** 2 infantry.
-- **L3:** 2 infantry, 2 tanks, and 1 artillery.
+- **L3:** 2 infantry, 2 tanks, 1 artillery, and 1 scout plane.
 - **O3:** 2 infantry, 1 tank, 1 engineer, and 1 special forces.
 - **A5, E6, and I6:** 1 infantry each.
 
@@ -243,7 +255,7 @@ Each step ends with something playable to test on iPhone and computer.
 1. **The map:** the 16 by 16 grid, terrain, cities, and ownership, with accessible square descriptions and quick navigation. (Built.)
 2. **Units and movement:** starting armies, giving move orders, terrain movement rules, and the lock-in button, played pass-the-phone or against an AI that only defends. (Built.)
 3. **Combat:** battles when enemies meet, odds announced before attacking, and turn reports. (Built.)
-4. **Fog of war:** hidden enemy units, adjacent vision, and scout planes.
+4. **Fog of war:** hidden enemy units, adjacent vision, and scout planes. (Built.)
 5. **Economy:** cities, buildings, manpower, industry, gasoline, and building new units.
 6. **Sea and air:** ships, transports, invasions, fighters, bombers, and air control.
 7. **Missiles and defenses.**

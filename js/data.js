@@ -48,9 +48,20 @@ SF.UNIT_TYPES = {
   engineer: { name: "engineer", plural: "engineers", move: 2, crossRiver: true, attack: 1, defense: 2, loss: 2 },
   tank: { name: "tank", plural: "tanks", move: 3, crossRiver: false, attack: 6, defense: 3, loss: 5 },
   artillery: { name: "artillery", plural: "artillery", move: 2, crossRiver: true, attack: 2, defense: 2, loss: 4, bombardRange: 2 },
-  antiAir: { name: "anti-aircraft gun", plural: "anti-aircraft guns", move: 2, crossRiver: true, attack: 1, defense: 2, loss: 3 }
+  antiAir: { name: "anti-aircraft gun", plural: "anti-aircraft guns", move: 2, crossRiver: true, attack: 1, defense: 2, loss: 3 },
+  // Air units are based in cities. They do not hold or block squares, and do
+  // not fight in ground battles.
+  scoutPlane: { name: "scout plane", plural: "scout planes", air: true, loss: 7 }
 };
-SF.UNIT_ORDER = ["infantry", "specialForces", "engineer", "tank", "artillery", "antiAir"];
+SF.UNIT_ORDER = ["infantry", "specialForces", "engineer", "tank", "artillery", "antiAir", "scoutPlane"];
+
+// Fog of war
+// Ground units, and cities you hold, see every square touching them,
+// diagonals included. You also see all of your own land.
+// Special forces are only spotted by ground units next to them.
+SF.SCOUT_RANGE = 10;         // squares from its base a scout plane can reach
+SF.SCOUT_RADIUS = 2;         // it sees a 5 by 5 area around its target
+SF.SCOUT_AA_CHANCE = 0.2;    // chance each enemy anti-aircraft gun in that area shoots it down
 
 // Battles
 SF.BATTLE_ROUNDS = 3;
@@ -70,9 +81,9 @@ SF.MOVE_COST = { plains: 1, city: 1, bridge: 1, forest: 2, mountains: 3, river: 
 
 // North's starting army. South gets the mirror image.
 SF.STARTING_ARMY = [
-  ["F2", { infantry: 3, antiAir: 1 }],
+  ["F2", { infantry: 3, antiAir: 1, scoutPlane: 1 }],
   ["C3", { infantry: 2 }],
-  ["L3", { infantry: 2, tank: 2, artillery: 1 }],
+  ["L3", { infantry: 2, tank: 2, artillery: 1, scoutPlane: 1 }],
   ["O3", { infantry: 2, tank: 1, engineer: 1, specialForces: 1 }],
   ["A5", { infantry: 1 }],
   ["E6", { infantry: 1 }],

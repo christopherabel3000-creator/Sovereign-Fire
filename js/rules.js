@@ -1,4 +1,4 @@
-// Sovereign Fire: game rules (setup, movement, battles, turn resolution).
+// Sovereign Fire: game rules (setup, vision, movement, battles, turn resolution).
 (function (SF) {
   "use strict";
 
@@ -13,6 +13,7 @@
       units: [],
       orders: [[], []],
       nextOrderId: 1,
+      scouted: [[], []],   // squares each side's scout planes saw last turn
       report: null
     };
     SF.STARTING_ARMY.forEach(function (entry) {
@@ -29,16 +30,25 @@
     return state;
   };
 
+  function isAir(u) { return !!SF.UNIT_TYPES[u.type].air; }
+  SF.isAir = isAir;
+
   SF.unitsAt = function (state, id, owner) {
     return state.units.filter(function (u) {
       return u.at === id && (owner === undefined || u.owner === owner);
     });
   };
 
-  // Who has units on a square right now, or null.
+  SF.groundAt = function (state, id, owner) {
+    return SF.unitsAt(state, id, owner).filter(function (u) { return !isAir(u); });
+  };
+
+  // Who has ground units on a square right now, or null. Planes in a city
+  // do not hold it.
   SF.occupant = function (state, id) {
     for (var i = 0; i < state.units.length; i++) {
-      if (state.units[i].at === id) return state.units[i].owner;
+      var u = state.units[i];
+      if (u.at === id && !isAir(u)) return u.owner;
     }
     return null;
   };
@@ -56,12 +66,68 @@
     var sa = SF.sq(a), sb = SF.sq(b);
     return Math.abs(sa.row - sb.row) + Math.abs(sa.col - sb.col);
   }
+  SF.distance = distance;
+
+  // Squares within r steps, diagonals counting as one step.
+  function around(id, r) {
+    var c = SF.sq(id), out = [];
+    for (var dr = -r; dr <= r; dr++) {
+      for (var dc = -r; dc <= r; dc++) {
+        var nr = c.row + dr, nc = c.col + dc;
+        if (nr >= 0 && nr < SF.SIZE && nc >= 0 && nc < SF.SIZE) out.push(SF.grid[nr][nc].id);
+      }
+    }
+    return out;
+  }
+  SF.around = around;
+
+  // ---------- Vision ----------
+
+  // close: squares next to your ground units. Only these reveal special forces.
+  // wide: close, plus your own land, squares next to cities you hold, and
+  // scouted squares.
+  SF.vision = function (state, owner) {
+    var close = {}, wide = {};
+    state.units.forEach(function (u) {
+      if (u.owner !== owner || isAir(u)) return;
+      around(u.at, 1).forEach(function (id) { close[id] = true; wide[id] = true; });
+    });
+    // Your own land is watched by your people, and cities you hold see the
+    // squares around them. Neither reveals special forces.
+    SF.allSquares().forEach(function (sq) {
+      if (sq.home === owner) wide[sq.id] = true;
+      if (sq.terrain.key === "city" && sq.home === owner && SF.occupant(state, sq.id) !== 1 - owner) {
+        around(sq.id, 1).forEach(function (id) { wide[id] = true; });
+      }
+    });
+    ((state.scouted || [[], []])[owner] || []).forEach(function (id) { wide[id] = true; });
+    return { close: close, wide: wide };
+  };
+
+  SF.canSee = function (vision, u) {
+    return u.type === "specialForces" ? !!vision.close[u.at] : !!vision.wide[u.at];
+  };
+
+  // Enemy units on a square that this side can see.
+  SF.visibleEnemies = function (state, owner, id, vision) {
+    vision = vision || SF.vision(state, owner);
+    return SF.unitsAt(state, id, 1 - owner).filter(function (u) { return SF.canSee(vision, u); });
+  };
+
+  // Who this side believes holds a square with ground units.
+  function knownOccupant(state, owner, id, vision) {
+    if (SF.groundAt(state, id, owner).length) return owner;
+    var seen = SF.visibleEnemies(state, owner, id, vision).filter(function (u) { return !isAir(u); });
+    return seen.length ? 1 - owner : null;
+  }
+  SF.knownOccupant = knownOccupant;
 
   // ---------- Movement ----------
 
-  // Squares one unit type can reach this turn. Squares holding enemy units
-  // can be attacked but not moved through.
-  function reachType(state, owner, fromId, type) {
+  // Squares one unit type can reach this turn, as far as this side knows.
+  // Enemy squares it can see can be attacked but not moved through. Hidden
+  // enemies are not known, so a move onto their square becomes a surprise battle.
+  function reachType(state, owner, fromId, type, vision) {
     var t = SF.UNIT_TYPES[type];
     var best = {};
     best[fromId] = t.move;
@@ -74,7 +140,7 @@
         var key = n.terrain.key;
         if (key === "ocean") return;
         if (key === "river" && !t.crossRiver) return;
-        var occ = SF.occupant(state, n.id);
+        var occ = knownOccupant(state, owner, n.id, vision);
         if (occ !== null && occ !== owner) {
           if (best[n.id] === undefined) best[n.id] = 0;
           return;
@@ -92,8 +158,10 @@
 
   // Squares a group of unit types can all reach, nearest first.
   SF.reachable = function (state, owner, fromId, types) {
+    types = types.filter(function (t) { return !SF.UNIT_TYPES[t].air; });
     if (!types.length) return [];
-    var maps = types.map(function (type) { return reachType(state, owner, fromId, type); });
+    var vision = SF.vision(state, owner);
+    var maps = types.map(function (type) { return reachType(state, owner, fromId, type, vision); });
     return Object.keys(maps[0]).filter(function (id) {
       return maps.every(function (m) { return m[id] !== undefined; });
     }).sort(function (a, b) {
@@ -123,6 +191,7 @@
 
   SF.addOrder = function (state, owner, unitIds, to) {
     var units = checkUnits(state, owner, unitIds);
+    units.forEach(function (u) { if (isAir(u)) throw new Error("Planes do not move like ground units"); });
     var from = units[0].at;
     if (SF.reachable(state, owner, from, typesOf(units)).indexOf(to) === -1) throw new Error("Out of reach");
     var order = { id: state.nextOrderId++, kind: "move", unitIds: unitIds.slice(), from: from, to: to };
@@ -130,12 +199,13 @@
     return order;
   };
 
-  // Enemy-held squares artillery can fire at from a square.
+  // Enemy squares artillery can see and fire at from a square.
   SF.bombardTargets = function (state, owner, fromId) {
     var range = SF.UNIT_TYPES.artillery.bombardRange;
+    var vision = SF.vision(state, owner);
     return SF.allSquares().filter(function (sq) {
-      var occ = SF.occupant(state, sq.id);
-      return occ !== null && occ !== owner && distance(fromId, sq.id) <= range;
+      return distance(fromId, sq.id) <= range &&
+        knownOccupant(state, owner, sq.id, vision) === 1 - owner;
     }).map(function (sq) { return sq.id; }).sort(function (a, b) {
       return distance(fromId, a) - distance(fromId, b);
     });
@@ -147,6 +217,20 @@
     units.forEach(function (u) { if (u.type !== "artillery") throw new Error("Only artillery can bombard"); });
     if (SF.bombardTargets(state, owner, from).indexOf(target) === -1) throw new Error("Out of range");
     var order = { id: state.nextOrderId++, kind: "bombard", unitIds: unitIds.slice(), from: from, to: target };
+    state.orders[owner].push(order);
+    return order;
+  };
+
+  SF.canScout = function (fromId, target) {
+    return !!SF.sq(target) && distance(fromId, target) <= SF.SCOUT_RANGE;
+  };
+
+  SF.addScout = function (state, owner, planeId, target) {
+    var units = checkUnits(state, owner, [planeId]);
+    if (units[0].type !== "scoutPlane") throw new Error("Only scout planes scout");
+    var from = units[0].at;
+    if (!SF.canScout(from, target)) throw new Error("Out of range");
+    var order = { id: state.nextOrderId++, kind: "scout", unitIds: [planeId], from: from, to: target };
     state.orders[owner].push(order);
     return order;
   };
@@ -218,9 +302,9 @@
   };
 
   // Chance, as a whole percent, that these units take the target square
-  // from the enemy units on it now.
+  // from the enemy units this side can see there.
   SF.attackOdds = function (state, owner, units, target, rand) {
-    var defenders = SF.unitsAt(state, target, 1 - owner);
+    var defenders = SF.visibleEnemies(state, owner, target).filter(function (u) { return !isAir(u); });
     var terrain = SF.sq(target).terrain.key;
     var wins = 0, runs = 400;
     for (var i = 0; i < runs; i++) {
@@ -242,16 +326,20 @@
 
   // ---------- Turn resolution ----------
 
+  // Produces a list of events. Each side's screen shows only the events,
+  // and the parts of them, that side would know about.
   SF.resolveTurn = function (state, rand) {
     rand = rand || Math.random;
-    var report = { turn: state.turn, mode: state.mode, bombards: [], battles: [], moves: [] };
+    var events = [];
     var alive = {};
     state.units.forEach(function (u) { alive[u.id] = u; });
+    state.scouted = [[], []];
 
     function unitsOf(order) {
       return order.unitIds.map(function (id) { return alive[id]; }).filter(Boolean);
     }
     function kill(units) { units.forEach(function (u) { delete alive[u.id]; }); }
+    function living() { return Object.keys(alive).map(function (id) { return alive[id]; }); }
 
     var all = [];
     [0, 1].forEach(function (owner) {
@@ -264,8 +352,9 @@
       if (!guns.length) return;
       var killed = [];
       guns.forEach(function () {
-        var targets = Object.keys(alive).map(function (id) { return alive[id]; })
-          .filter(function (u) { return u.at === e.order.to && u.owner !== e.owner; });
+        var targets = living().filter(function (u) {
+          return u.at === e.order.to && u.owner !== e.owner && !isAir(u);
+        });
         if (!targets.length) return;
         if (rand() < SF.bombardChance(e.order.to)) {
           var hit = targets[Math.floor(rand() * targets.length)];
@@ -273,23 +362,24 @@
           delete alive[hit.id];
         }
       });
-      report.bombards.push({
-        owner: e.owner, what: SF.describeUnits(guns), from: e.order.from, at: e.order.to,
-        killed: SF.describeUnits(killed)
+      events.push({
+        type: "bombard", owner: e.owner, what: SF.describeUnits(guns), from: e.order.from,
+        at: e.order.to, killed: SF.describeUnits(killed)
       });
     });
 
-    // 2. Movement and battles.
-    var moves = all.filter(function (e) { return e.order.kind !== "bombard"; });
+    // 2. Ground movement and battles.
+    var moves = all.filter(function (e) { return e.order.kind === "move"; });
     moves.forEach(function (e) { e.units = unitsOf(e.order); });
     moves = moves.filter(function (e) { return e.units.length; });
 
     var inTransit = {};
     moves.forEach(function (e) { e.units.forEach(function (u) { inTransit[u.id] = true; }); });
-    var retreats = [];   // { units, to }
+    var retreats = [];   // { owner, units, to }
 
-    function battleEntry(at, attOwner, att, def, outcome, meeting) {
-      report.battles.push({
+    function battleEvent(at, attOwner, att, def, outcome, meeting) {
+      events.push({
+        type: "battle",
         at: at,
         meeting: meeting,
         attacker: attOwner,
@@ -309,7 +399,7 @@
         if (a.order.from === b.order.to && a.order.to === b.order.from) {
           var out = SF.fight(a.units, b.units, null, true, rand);
           kill(out.attLost); kill(out.defLost);
-          battleEntry(a.order.from + " and " + b.order.from, 0, a.units, b.units, out, true);
+          battleEvent(a.order.from + " and " + b.order.from, 0, a.units, b.units, out, true);
           a.done = b.done = true;
           a.units.concat(b.units).forEach(function (u) { delete inTransit[u.id]; });
         }
@@ -326,18 +416,23 @@
     Object.keys(byTarget).sort().forEach(function (target) {
       var incoming = byTarget[target];
       var terrain = SF.sq(target).terrain.key;
-      var stay = Object.keys(alive).map(function (id) { return alive[id]; })
-        .filter(function (u) { return u.at === target && !inTransit[u.id]; });
+      var stay = living().filter(function (u) { return u.at === target && !inTransit[u.id] && !isAir(u); });
       var side = [[], []];
       incoming.forEach(function (e) {
         e.units = e.units.filter(function (u) { return alive[u.id]; });
         side[e.owner].push(e);
       });
       function unitsIn(list) { return list.reduce(function (acc, e) { return acc.concat(e.units); }, []); }
+      function place(list) {
+        list.forEach(function (e) { e.units.forEach(function (u) { if (alive[u.id]) u.at = target; }); });
+      }
       function arrive(list) {
+        place(list);
         list.forEach(function (e) {
-          e.units.forEach(function (u) { if (alive[u.id]) u.at = target; });
-          report.moves.push({ owner: e.owner, what: SF.describeUnits(e.units), from: e.order.from, to: target });
+          events.push({
+            type: "move", owner: e.owner, what: SF.describeUnits(e.units), from: e.order.from, to: target,
+            unitIds: e.units.map(function (u) { return u.id; })
+          });
         });
       }
       function retreat(list) {
@@ -356,55 +451,76 @@
         var defenders = stay.concat(unitsIn(side[defOwner]));
         var out = SF.fight(attackers, defenders, terrain, false, rand);
         kill(out.attLost); kill(out.defLost);
-        battleEntry(target, attOwner, attackers, defenders, out, false);
-        if (out.result === "attacker") {
-          side[attOwner].forEach(function (e) {
-            e.units.forEach(function (u) { if (alive[u.id]) u.at = target; });
-          });
-        } else {
-          retreat(side[attOwner]);
-        }
+        battleEvent(target, attOwner, attackers, defenders, out, false);
+        if (out.result === "attacker") place(side[attOwner]);
+        else retreat(side[attOwner]);
       } else if (side[0].length && side[1].length) {
         var a = unitsIn(side[0]), b = unitsIn(side[1]);
         var meet = SF.fight(a, b, terrain, true, rand);
         kill(meet.attLost); kill(meet.defLost);
-        battleEntry(target, 0, a, b, meet, true);
-        if (meet.result === "attacker") {
-          side[0].forEach(function (e) { e.units.forEach(function (u) { if (alive[u.id]) u.at = target; }); });
-        } else if (meet.result === "defender") {
-          side[1].forEach(function (e) { e.units.forEach(function (u) { if (alive[u.id]) u.at = target; }); });
-        } else {
-          retreat(side[0]); retreat(side[1]);
-        }
+        battleEvent(target, 0, a, b, meet, true);
+        if (meet.result === "attacker") { place(side[0]); retreat(side[1]); }
+        else if (meet.result === "defender") { place(side[1]); retreat(side[0]); }
+        else { retreat(side[0]); retreat(side[1]); }
       } else {
         arrive(side[0].length ? side[0] : side[1]);
       }
     });
 
     // Units falling back to a square the enemy now holds are cut off and lost.
+    function retreating(u) {
+      return retreats.some(function (r) { return r.units.indexOf(u) !== -1; });
+    }
     retreats.forEach(function (r) {
-      var held = Object.keys(alive).some(function (id) {
-        var u = alive[id];
-        return u.at === r.to && u.owner !== r.owner && !inTransitBack(u);
+      var held = living().some(function (u) {
+        return u.at === r.to && u.owner !== r.owner && !isAir(u) && !retreating(u);
       });
       if (held) {
         kill(r.units);
-        report.battles.push({ cutOff: true, owner: r.owner, what: SF.describeUnits(r.units), at: r.to });
+        events.push({ type: "cutOff", owner: r.owner, what: SF.describeUnits(r.units), at: r.to });
       } else {
         r.units.forEach(function (u) { u.at = r.to; });
       }
     });
-    function inTransitBack(u) {
-      return retreats.some(function (r) { return r.units.indexOf(u) !== -1; });
-    }
+
+    // 3. Planes in a city the enemy now holds are destroyed on the ground.
+    var lostByPlace = {};
+    living().forEach(function (u) {
+      if (!isAir(u)) return;
+      var enemyThere = living().some(function (g) { return g.at === u.at && g.owner !== u.owner && !isAir(g); });
+      if (!enemyThere) return;
+      var key = u.owner + "@" + u.at;
+      (lostByPlace[key] = lostByPlace[key] || { owner: u.owner, at: u.at, units: [] }).units.push(u);
+    });
+    Object.keys(lostByPlace).forEach(function (k) {
+      var g = lostByPlace[k];
+      kill(g.units);
+      events.push({ type: "planesLost", owner: g.owner, at: g.at, what: SF.describeUnits(g.units) });
+    });
+
+    // 4. Scout planes fly after the fighting, so they see where armies ended up.
+    all.filter(function (e) { return e.order.kind === "scout"; }).forEach(function (e) {
+      var plane = unitsOf(e.order)[0];
+      if (!plane) return;
+      var area = around(e.order.to, SF.SCOUT_RADIUS);
+      var guns = living().filter(function (u) {
+        return u.type === "antiAir" && u.owner !== e.owner && area.indexOf(u.at) !== -1;
+      });
+      var shot = guns.some(function () { return rand() < SF.SCOUT_AA_CHANCE; });
+      if (shot) {
+        kill([plane]);
+      } else {
+        area.forEach(function (id) {
+          if (state.scouted[e.owner].indexOf(id) === -1) state.scouted[e.owner].push(id);
+        });
+      }
+      events.push({ type: "scout", owner: e.owner, from: e.order.from, at: e.order.to, shotDown: shot });
+    });
 
     state.units = state.units.filter(function (u) { return alive[u.id]; });
-    report.remaining = [0, 1].map(function (owner) {
-      return state.units.filter(function (u) { return u.owner === owner; }).length;
-    });
-    state.report = report;
+    state.report = { turn: state.turn, mode: state.mode, events: events };
     state.orders = [[], []];
     state.turn += 1;
-    return report;
+    return state.report;
   };
 })(window.SF);

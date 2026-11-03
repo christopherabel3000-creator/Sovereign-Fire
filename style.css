@@ -60,6 +60,13 @@ table.map td { padding: 0; }
 }
 .sq.home0 { box-shadow: inset 0 0 0 1px rgba(63, 134, 224, 0.6); }
 .sq.home1 { box-shadow: inset 0 0 0 1px rgba(208, 74, 74, 0.6); }
+.sq.fog::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 12, 16, 0.45);
+  pointer-events: none;
+}
 .sq.selected, .sq:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; z-index: 1; }
 .sq.target::after {
   content: "";
