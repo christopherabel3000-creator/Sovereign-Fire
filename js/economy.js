@@ -69,6 +69,7 @@
     fighter: { industry: 10, recruits: 1, gasoline: 3, turns: 2, needs: "airfield" },
     bomber: { industry: 14, recruits: 1, gasoline: 4, turns: 2, needs: "airfield" },
     missile: { industry: 15, recruits: 0, gasoline: 3, turns: 2, needs: "factory" },
+    satellite: { industry: 30, recruits: 0, gasoline: 6, turns: 3, needs: "factory", tech: "satellites" },
     destroyer: { industry: 12, recruits: 2, gasoline: 4, turns: 2, needs: "port" },
     submarine: { industry: 12, recruits: 2, gasoline: 4, turns: 2, needs: "port" },
     transport: { industry: 8, recruits: 1, gasoline: 3, turns: 2, needs: "port" },
@@ -207,9 +208,10 @@
   SF.capacity = function (state, owner, job) {
     var building = SF.JOBS[job].building;
     if (!building) return Infinity;
+    var perBuilding = SF.WORKERS_PER_BUILDING + SF.effect(state, owner, building + "Cap");
     var total = 0;
     SF.citiesOf(state, owner).forEach(function (id) {
-      total += state.cities[id].buildings[building] * SF.WORKERS_PER_BUILDING * SF.cityRate(state, id);
+      total += state.cities[id].buildings[building] * perBuilding * SF.cityRate(state, id);
     });
     return Math.floor(total);
   };
@@ -248,8 +250,18 @@
   // ---------- Production ----------
 
   // Why a unit cannot be built here right now, or null if it can.
+  // A unit's cost for this side, after technology.
+  SF.unitCost = function (state, owner, type) {
+    var base = SF.UNIT_COST[type];
+    var cost = JSON.parse(JSON.stringify(base));
+    cost.industry = Math.floor(base.industry * (1 - SF.effect(state, owner, "discount")));
+    cost.gasoline = base.gasoline || 0;
+    return cost;
+  };
+
   SF.unitProblem = function (state, owner, city, type) {
-    var c = state.cities[city], cost = SF.UNIT_COST[type], e = state.econ[owner];
+    var c = state.cities[city], cost = SF.unitCost(state, owner, type), e = state.econ[owner];
+    if (cost.tech && !SF.hasTech(state, owner, cost.tech)) return "Needs " + SF.tech(cost.tech).name + " research.";
     if (!c || c.owner !== owner) return "You do not hold " + city + ".";
     if (cost.needs && !c.buildings[cost.needs]) return "Needs " + SF.withArticle(SF.BUILDINGS[cost.needs].name) + " in this city.";
     if (SF.UNIT_TYPES[type].naval && SF.blockaded(state, city)) return "The port is blockaded by enemy warships.";
@@ -271,7 +283,7 @@
   SF.startUnit = function (state, owner, city, type) {
     var problem = SF.unitProblem(state, owner, city, type);
     if (problem) throw new Error(problem);
-    var cost = SF.UNIT_COST[type], e = state.econ[owner];
+    var cost = SF.unitCost(state, owner, type), e = state.econ[owner];
     e.industry -= cost.industry;
     e.recruits -= cost.recruits;
     e.gasoline -= cost.gasoline || 0;
@@ -336,7 +348,9 @@
     state.projects.forEach(function (p) {
       p.turnsLeft -= 1;
       if (p.turnsLeft > 0) { still.push(p); return; }
-      if (p.kind === "unit") {
+      if (p.kind === "unit" && p.type === "satellite") {
+        SF.launchSatellite(state, p.owner);
+      } else if (p.kind === "unit") {
         state.units.push({ id: state.nextUnitId++, type: p.type, owner: p.owner, at: p.city });
       } else {
         state.cities[p.city].buildings[p.type] += 1;

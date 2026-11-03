@@ -149,7 +149,7 @@
     state.units.forEach(function (u) {
       if (u.owner !== owner || isAir(u) || isCargo(u)) return;
       around(u.at, 1).forEach(function (id) { close[id] = true; wide[id] = true; });
-      var s = SF.UNIT_TYPES[u.type].sonar;
+      var s = SF.stat(state, owner, u.type, "sonar");
       if (s) around(u.at, s).forEach(function (id) { sonar[id] = true; });
     });
     // Your own land is watched by your people, and cities you hold see the
@@ -162,14 +162,22 @@
         around(sq.id, 1).forEach(function (id) { wide[id] = true; });
       }
     });
-    ((state.scouted || [[], []])[owner] || []).forEach(function (id) { wide[id] = true; });
-    return { close: close, wide: wide, sonar: sonar };
+    // Scouted squares and satellite watch areas. With deep cover agents,
+    // these also reveal special forces and submarines.
+    var deep = {}, agents = SF.effect(state, owner, "deepCover") > 0;
+    function far(id) { wide[id] = true; if (agents) deep[id] = true; }
+    ((state.scouted || [[], []])[owner] || []).forEach(far);
+    if (state.econ) {
+      SF.satellites(state, owner).forEach(function (sat) { around(sat.watch, SF.SATELLITE_RADIUS).forEach(far); });
+    }
+    return { close: close, wide: wide, sonar: sonar, deep: deep };
   };
 
   SF.canSee = function (vision, u) {
     if (isCargo(u)) return false;
-    if (u.type === "specialForces") return !!vision.close[u.at];
-    if (u.type === "submarine") return !!vision.close[u.at] || !!vision.sonar[u.at];
+    var deep = vision.deep && vision.deep[u.at];
+    if (u.type === "specialForces") return !!vision.close[u.at] || !!deep;
+    if (u.type === "submarine") return !!vision.close[u.at] || !!vision.sonar[u.at] || !!deep;
     return !!vision.wide[u.at];
   };
 
@@ -217,7 +225,7 @@
     }
 
     var naval = !!t.naval;
-    best[fromId] = t.move;
+    best[fromId] = SF.stat(state, owner, u.type, "move");
     var queue = [fromId];
     while (queue.length) {
       var id = queue.shift();
@@ -376,15 +384,15 @@
     return order;
   };
 
-  SF.canScout = function (fromId, target) {
-    return !!SF.sq(target) && distance(fromId, target) <= SF.SCOUT_RANGE;
+  SF.canScout = function (state, owner, fromId, target) {
+    return !!SF.sq(target) && distance(fromId, target) <= SF.stat(state, owner, "scoutPlane", "range");
   };
 
   SF.addScout = function (state, owner, planeId, target) {
     var units = checkUnits(state, owner, [planeId]);
     if (units[0].type !== "scoutPlane") throw new Error("Only scout planes scout");
     var from = units[0].at;
-    if (!SF.canScout(from, target)) throw new Error("Out of range");
+    if (!SF.canScout(state, owner, from, target)) throw new Error("Out of range");
     var order = { id: state.nextOrderId++, kind: "scout", unitIds: [planeId], from: from, to: target };
     state.orders[owner].push(order);
     return order;
@@ -399,14 +407,14 @@
     });
     return planes;
   }
-  function groupRange(planes) {
-    return Math.min.apply(null, planes.map(function (u) { return SF.UNIT_TYPES[u.type].range; }));
+  function groupRange(state, planes) {
+    return Math.min.apply(null, planes.map(function (u) { return SF.stat(state, u.owner, u.type, "range"); }));
   }
 
   // Fighters patrol the 3 by 3 area around a square, holding the sky there.
   SF.addPatrol = function (state, owner, ids, target) {
     var planes = planeGroup(state, owner, ids, "fighter");
-    if (!SF.sq(target) || distance(planes[0].at, target) > groupRange(planes)) throw new Error("Out of range");
+    if (!SF.sq(target) || distance(planes[0].at, target) > groupRange(state, planes)) throw new Error("Out of range");
     var order = { id: state.nextOrderId++, kind: "patrol", unitIds: ids.slice(), from: planes[0].at, to: target };
     state.orders[owner].push(order);
     return order;
@@ -415,7 +423,7 @@
   // What bombers from a square can hit: visible enemy troops, enemy cities'
   // buildings, and bridges. Each is { id, mode }.
   SF.bombTargets = function (state, owner, fromId) {
-    var range = SF.UNIT_TYPES.bomber.range;
+    var range = SF.stat(state, owner, "bomber", "range");
     var vision = SF.vision(state, owner);
     var out = [];
     SF.allSquares().forEach(function (sq) {
@@ -440,7 +448,7 @@
   // Where planes can move to: airfield cities you hold, and your carriers
   // with room, in range. Each is { id, carrier } where carrier is a unit id or null.
   SF.rebaseTargets = function (state, owner, planes) {
-    var from = planes[0].at, range = groupRange(planes), out = [];
+    var from = planes[0].at, range = groupRange(state, planes), out = [];
     Object.keys(state.cities).forEach(function (id) {
       var c = state.cities[id];
       if (c.owner === owner && c.buildings.airfield > 0 && id !== from && distance(from, id) <= range &&
@@ -482,7 +490,7 @@
     var ms = checkUnits(state, owner, ids);
     ms.forEach(function (u) { if (u.type !== "missile") throw new Error("Not a missile"); });
     if (!SF.sq(target)) throw new Error("Not a square");
-    if (distance(ms[0].at, target) > SF.UNIT_TYPES.missile.range) throw new Error("Out of range");
+    if (distance(ms[0].at, target) > SF.stat(state, owner, "missile", "range")) throw new Error("Out of range");
     if (mode === "buildings") {
       var c = state.cities[target];
       if (!c || c.owner !== 1 - owner) throw new Error("Not an enemy city");
@@ -522,8 +530,11 @@
     return foes.some(function (f) { return hunts.indexOf(f.type) !== -1; }) ? SF.HUNT_BONUS : 0;
   }
 
+  // The game being played, so battles can use each side's technology.
+  var statState = null;
+
   function attackValue(u, terrain, foes, landing) {
-    var v = SF.UNIT_TYPES[u.type].attack + huntBonus(u, foes);
+    var v = SF.stat(statState, u.owner, u.type, "attack") + huntBonus(u, foes);
     if (u.type === "tank" && terrain) v += SF.TANK_ATTACK[terrain] || 0;
     if (landing && landing[u.id]) v -= SF.LANDING_PENALTY;
     return v;
@@ -531,7 +542,7 @@
 
   function defenseValue(u, terrain, foes) {
     var t = SF.UNIT_TYPES[u.type];
-    var v = t.defense + (SF.DEFENSE_BONUS[terrain] || 0) + huntBonus(u, foes);
+    var v = SF.stat(statState, u.owner, u.type, "defense") + (SF.DEFENSE_BONUS[terrain] || 0) + huntBonus(u, foes);
     if (t.rough) v += SF.ROUGH_BONUS[terrain] || 0;
     return v;
   }
@@ -583,9 +594,11 @@
       units.forEach(function (u) { marks[u.id] = true; });
     }
     var wins = 0, runs = 400;
+    statState = state;
     for (var i = 0; i < runs; i++) {
       if (SF.fight(units, defenders, terrain, false, rand, marks).result === "attacker") wins++;
     }
+    statState = null;
     // Nothing is ever certain, so never show 0% or 100%.
     return Math.min(99, Math.max(1, Math.round((wins / runs) * 100)));
   };
@@ -608,7 +621,33 @@
   // and the parts of them, that side would know about.
   SF.resolveTurn = function (state, rand) {
     rand = rand || Math.random;
+    statState = state;
     var events = [];
+    state.hinted = state.hinted || [[], []];
+
+    // The first time a side runs into an enemy technology, it may notice.
+    function hint(owner, techId, viewer) {
+      var t = SF.tech(techId);
+      if (!t.hint || !SF.hasTech(state, owner, techId)) return;
+      if (state.hinted[viewer].indexOf(techId) !== -1) return;
+      state.hinted[viewer].push(techId);
+      events.push({ type: "hint", owner: viewer, text: t.hint });
+    }
+    // Hints from a battle: each side may notice upgrades on the other's units.
+    function battleHints(sideA, sideB) {
+      [[sideA, sideB], [sideB, sideA]].forEach(function (pair) {
+        var units = pair[0], other = pair[1];
+        if (!units.length || !other.length) return;
+        var owner = units[0].owner, viewer = other[0].owner;
+        SF.researchOf(state, owner).done.forEach(function (id) {
+          var mods = SF.tech(id).mods;
+          if (!mods) return;
+          if (units.some(function (u) { return mods[u.type] && (mods[u.type].attack || mods[u.type].defense); })) {
+            hint(owner, id, viewer);
+          }
+        });
+      });
+    }
     var alive = {};
     state.units.forEach(function (u) { alive[u.id] = u; });
     state.scouted = [[], []];
@@ -662,6 +701,7 @@
         var fb = b.units.filter(function (u) { return alive[u.id]; });
         if (!fa.length || !fb.length) return;
         var out = SF.fight(fa, fb, null, true, rand);
+        battleHints(fa, fb);
         kill(out.attLost); kill(out.defLost);
         events.push({
           type: "airBattle", at: a.at === b.at ? a.at : a.at + " and " + b.at,
@@ -705,6 +745,7 @@
         var escorts = fightersOver(e.owner, target);
         // An interception is a single pass, not a full battle.
         var out = SF.fight(interceptors, bombers.concat(escorts), null, false, rand, null, { rounds: SF.INTERCEPT_ROUNDS });
+        battleHints(interceptors, bombers.concat(escorts));
         kill(out.attLost); kill(out.defLost);
         ev.intercepted = {
           by: SF.describeUnits(interceptors), escorts: SF.describeUnits(escorts),
@@ -718,16 +759,18 @@
       var shotDown = [];
       guns.forEach(function () {
         var left = bombers.filter(function (u) { return alive[u.id]; });
-        if (left.length && rand() < SF.AA_CHANCE) { shotDown.push(left[0]); kill([left[0]]); }
+        var aa = SF.AA_CHANCE * (SF.effect(state, e.owner, "stealth") ? 0.5 : 1);
+        if (left.length && rand() < aa) { shotDown.push(left[0]); kill([left[0]]); }
       });
       ev.shotDown = SF.describeUnits(shotDown);
+      if (interceptors.length || guns.length) hint(e.owner, "stealth", 1 - e.owner);
       var flying = bombers.filter(function (u) { return alive[u.id]; });
       ev.dropped = flying.length;
       var killed = [], wrecked = [];
       flying.forEach(function () {
         if (e.order.mode === "troops") {
           var targets = living().filter(function (u) { return u.at === target && u.owner !== e.owner && isGround(u); });
-          if (targets.length && rand() < SF.bombardChance(target, "bomber")) {
+          if (targets.length && rand() < SF.bombardChance(target, "bomber") + SF.effect(state, e.owner, "bombChance")) {
             var hit = targets[Math.floor(rand() * targets.length)];
             killed.push(hit);
             kill([hit]);
@@ -736,13 +779,13 @@
           var c = state.cities[target];
           if (!c || c.owner === e.owner) return;
           var kinds = SF.BUILDING_ORDER.filter(function (k) { return c.buildings[k] > 0; });
-          if (kinds.length && rand() < SF.BOMB_BUILDING) {
+          if (kinds.length && rand() < SF.BOMB_BUILDING + SF.effect(state, e.owner, "bombChance")) {
             var k = kinds[Math.floor(rand() * kinds.length)];
             c.buildings[k] -= 1;
             wrecked.push(SF.BUILDINGS[k].name);
           }
         } else if (e.order.mode === "bridge") {
-          if (!SF.bridgeBroken(state, target) && rand() < SF.BOMB_BRIDGE) {
+          if (!SF.bridgeBroken(state, target) && rand() < SF.BOMB_BRIDGE + SF.effect(state, e.owner, "bombChance")) {
             state.brokenBridges.push(target);
             ev.bridge = true;
           }
@@ -750,6 +793,7 @@
       });
       ev.killed = SF.describeUnits(killed);
       ev.wrecked = wrecked;
+      if (killed.length || wrecked.length || ev.bridge) hint(e.owner, "heavyBombers", 1 - e.owner);
       events.push(ev);
     });
 
@@ -764,16 +808,24 @@
       var target = e.order.to, foeSide = 1 - e.owner;
       var near = around(target, 1);
       var layers = [];
+      // Satellites in orbit sharpen both the attack and the defense.
+      var defBonus = SF.satelliteBonus(state, foeSide);
+      var hitBonus = SF.effect(state, e.owner, "missileHit") + SF.satelliteBonus(state, e.owner);
       near.forEach(function (id) {
         var c = state.cities[id];
         if (c && c.owner === foeSide && c.buildings.missileDefense > 0) {
-          layers.push({ key: "city:" + id, shots: c.buildings.missileDefense * SF.MISSILE_DEFENSE_SHOTS,
-            chance: SF.MISSILE_DEFENSE_CHANCE });
+          layers.push({ key: "city:" + id,
+            shots: c.buildings.missileDefense * (SF.MISSILE_DEFENSE_SHOTS + SF.effect(state, foeSide, "missileDefenseShots")),
+            chance: SF.MISSILE_DEFENSE_CHANCE + SF.effect(state, foeSide, "missileDefenseChance") + defBonus,
+            tech: SF.hasTech(state, foeSide, "layered") ? "layered" : null });
         }
       });
       living().forEach(function (u) {
         if (u.owner === foeSide && u.type === "destroyer" && !isCargo(u) && near.indexOf(u.at) !== -1) {
-          layers.push({ key: "ship:" + u.id, shots: SF.DESTROYER_MISSILE_SHOTS, chance: SF.DESTROYER_MISSILE_CHANCE });
+          layers.push({ key: "ship:" + u.id,
+            shots: SF.DESTROYER_MISSILE_SHOTS + SF.effect(state, foeSide, "destroyerMissileShots"),
+            chance: SF.DESTROYER_MISSILE_CHANCE + SF.effect(state, foeSide, "destroyerMissileChance") + defBonus,
+            tech: SF.hasTech(state, foeSide, "aegis") ? "aegis" : null });
         }
       });
       var stopped = 0;
@@ -782,7 +834,7 @@
           var l = layers[i];
           if ((shotsUsed[l.key] || 0) >= l.shots) continue;
           shotsUsed[l.key] = (shotsUsed[l.key] || 0) + 1;
-          if (rand() < l.chance) { stopped++; return; }
+          if (rand() < l.chance) { stopped++; if (l.tech) hint(foeSide, l.tech, e.owner); return; }
         }
       });
       var landed = missiles.length - stopped;
@@ -794,7 +846,7 @@
           var c = state.cities[target];
           if (!c || c.owner !== foeSide) continue;
           var kinds = SF.BUILDING_ORDER.filter(function (k) { return c.buildings[k] > 0; });
-          if (kinds.length && rand() < SF.MISSILE_BUILDING) {
+          if (kinds.length && rand() < SF.MISSILE_BUILDING + hitBonus) {
             var k = kinds[Math.floor(rand() * kinds.length)];
             c.buildings[k] -= 1;
             wrecked.push(SF.BUILDINGS[k].name);
@@ -805,7 +857,7 @@
               return u.at === target && u.owner === foeSide && (sea ? isShip(u) : isGround(u));
             });
             if (!targets.length) break;
-            if (rand() < Math.max(0.05, SF.MISSILE_HIT_CHANCE - (SF.BOMBARD_TERRAIN[terrain] || 0))) {
+            if (rand() < Math.max(0.05, SF.MISSILE_HIT_CHANCE + hitBonus - (SF.BOMBARD_TERRAIN[terrain] || 0))) {
               var hit = targets[Math.floor(rand() * targets.length)];
               killed.push(hit);
               kill([hit]);
@@ -813,10 +865,26 @@
           }
         }
       }
+      if (killed.length || wrecked.length) hint(e.owner, "guided", foeSide);
       events.push({
         type: "missile", owner: e.owner, from: e.order.from, at: target, mode: e.order.mode,
         fired: missiles.length, stopped: stopped, killed: SF.describeUnits(killed), wrecked: wrecked
       });
+    });
+
+    // Anti-satellite missiles.
+    all.filter(function (e) { return e.order.kind === "asat"; }).forEach(function (e) {
+      var missiles = unitsOf(e.order);
+      if (!missiles.length) return;
+      missiles.forEach(function (m) { delete alive[m.id]; });
+      var sats = SF.satellites(state, 1 - e.owner), destroyed = 0;
+      missiles.forEach(function () {
+        if (sats.length && rand() < SF.ASAT_CHANCE) {
+          sats.splice(Math.floor(rand() * sats.length), 1);
+          destroyed++;
+        }
+      });
+      events.push({ type: "asat", owner: e.owner, fired: missiles.length, destroyed: destroyed });
     });
 
     // 3. Artillery and destroyers fire.
@@ -877,6 +945,7 @@
           if (b.done || a.done || b.owner !== 1 || b.landing) return;
           if (a.from === b.to && a.to === b.from) {
             var out = SF.fight(a.units, b.units, null, true, rand);
+            battleHints(a.units, b.units);
             kill(out.attLost); kill(out.defLost);
             battleEvent(a.from + " and " + b.from, 0, a.units, b.units, out, true);
             a.done = b.done = true;
@@ -939,6 +1008,7 @@
           var landingAll = side[attOwner].every(function (x) { return x.landing; });
           var out = SF.fight(attackers, defenders, terrain, false, rand, landingMarks(side[attOwner]),
             { att: support(attOwner), def: support(defOwner) });
+          battleHints(attackers, defenders);
           kill(out.attLost); kill(out.defLost);
           battleEvent(target, attOwner, attackers, defenders, out, false, landingAll);
           if (out.result === "attacker") place(side[attOwner], true);
@@ -946,6 +1016,7 @@
         } else if (side[0].length && side[1].length) {
           var a = unitsIn(side[0]), b = unitsIn(side[1]);
           var meet = SF.fight(a, b, terrain, true, rand, null, { att: support(0), def: support(1) });
+          battleHints(a, b);
           kill(meet.attLost); kill(meet.defLost);
           battleEvent(target, 0, a, b, meet, true);
           if (meet.result === "attacker") { place(side[0], true); retreat(side[1]); }
@@ -1113,6 +1184,8 @@
     SF.updateCityOwners(state, events);
     SF.advanceProjects(state, events);
     SF.collectIncome(state, events);
+    SF.advanceResearch(state, events);
+    statState = null;
 
     state.report = { turn: state.turn, mode: state.mode, events: events };
     state.orders = [[], []];

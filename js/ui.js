@@ -5,7 +5,7 @@
   "use strict";
 
   var SAVE_KEY = "sovereignFire.save";
-  var SAVE_VERSION = 4;
+  var SAVE_VERSION = 5;
   var state = null;
   var selected = null;     // id of the selected square
   var buttons = {};        // map square buttons by id
@@ -122,6 +122,7 @@
       else if (o.kind === "rebase") t[o.to] = t[o.to] || "rebase";
       else if (o.kind === "repair") return;
       else if (o.kind === "missile") t[o.to] = "missile";
+      else if (o.kind === "asat") return;
       else t[o.to] = knownEnemy(o.to) ? "attack" : "move";
       if (o.landAt) t[o.landAt] = knownEnemy(o.landAt) ? "attack" : "landing";
     });
@@ -222,6 +223,7 @@
     if (o.kind === "rebase") return (o.carrier ? "landing on the carrier at " : "moving to the base at ") + o.to;
     if (o.kind === "repair") return "rebuilding the bridge";
     if (o.kind === "missile") return "firing at " + (o.mode === "buildings" ? "buildings in " : "") + o.to;
+    if (o.kind === "asat") return "firing at enemy satellites";
     if (o.kind === "sail") {
       var text = (knownEnemy(o.to) ? "attacking " : "sailing to ") + o.to;
       var loading = state.units.filter(function (u) { return (o.cargoIds || []).indexOf(u.id) !== -1; });
@@ -357,7 +359,7 @@
 
   function renderPatrolForm(box, sq, fighters) {
     if (!fighters.length) return;
-    var range = SF.UNIT_TYPES.fighter.range;
+    var range = SF.stat(state, me(), "fighter", "range");
     box.appendChild(el("h3", "Fighter patrol"));
     var form = el("form", undefined, "order-form");
     var count = countPicker(form, "Fighters to send, " + fighters.length + " available", fighters.length);
@@ -479,7 +481,7 @@
 
   function renderMissileForm(box, sq, missiles) {
     if (!missiles.length) return;
-    var range = SF.UNIT_TYPES.missile.range;
+    var range = SF.stat(state, me(), "missile", "range");
     box.appendChild(el("h3", "Missile strike"));
     var form = el("form", undefined, "order-form");
     form.appendChild(el("p", "Missiles can hit any square within " + range + " squares. If you cannot see the target, you will not learn what they hit. Missile defenses and destroyers near the target can shoot them down, so firing several at once can overwhelm them."));
@@ -487,7 +489,11 @@
     var input = squareInput(form, "Target square");
     var mLabel = el("label", "Aim at");
     var mode = document.createElement("select");
-    [["units", "Units on the square"], ["buildings", "Buildings in an enemy city"]].forEach(function (m) {
+    var modes = [["units", "Units on the square"], ["buildings", "Buildings in an enemy city"]];
+    if (SF.effect(state, me(), "asat") && SF.satellites(state, foe()).length) {
+      modes.push(["satellite", "An enemy satellite, no target square needed"]);
+    }
+    modes.forEach(function (m) {
       var o = el("option", m[1]);
       o.value = m[0];
       mode.appendChild(o);
@@ -498,6 +504,12 @@
     submitButton(form, "Launch missiles");
     form.addEventListener("submit", function (e) {
       e.preventDefault();
+      if (mode.value === "satellite") {
+        var shots = missiles.slice(0, parseInt(count.value, 10));
+        SF.addAsat(state, me(), shots.map(function (u) { return u.id; }));
+        afterOrder("Ordered " + SF.describeUnits(shots) + " fired at enemy satellites.");
+        return;
+      }
       var v = input.value.trim().toUpperCase().replace(/\s+/g, "");
       if (!SF.sq(v)) { error.textContent = "Not a square. Use a letter A to P and a number 1 to 16."; return; }
       if (SF.distance(sq.id, v) > range) {
@@ -570,7 +582,7 @@
     var ul2 = el("label", "Unit");
     var usel = document.createElement("select");
     Object.keys(SF.UNIT_COST).forEach(function (type) {
-      var cost = SF.UNIT_COST[type];
+      var cost = SF.unitCost(state, me(), type);
       var problem = SF.unitProblem(state, me(), id, type);
       var text = capitalize(SF.UNIT_TYPES[type].name) + ", " + cost.industry + " industry, " +
         cost.recruits + (cost.recruits === 1 ? " recruit" : " recruits") + ", " +
@@ -952,7 +964,8 @@
     if (!planes.length) return;
     box.appendChild(el("h3", "Scout mission"));
     var form = el("form", undefined, "order-form");
-    var label = el("label", "Target square, within " + SF.SCOUT_RANGE + " squares of " + sq.id);
+    var scoutRange = SF.stat(state, me(), "scoutPlane", "range");
+    var label = el("label", "Target square, within " + scoutRange + " squares of " + sq.id);
     var input = document.createElement("input");
     input.autocomplete = "off";
     input.setAttribute("autocapitalize", "characters");
@@ -970,8 +983,8 @@
       e.preventDefault();
       var v = input.value.trim().toUpperCase().replace(/\s+/g, "");
       if (!SF.sq(v)) { error.textContent = "Not a square. Use a letter A to P and a number 1 to 16."; return; }
-      if (!SF.canScout(sq.id, v)) {
-        error.textContent = v + " is " + SF.distance(sq.id, v) + " squares away. The limit is " + SF.SCOUT_RANGE + ".";
+      if (!SF.canScout(state, me(), sq.id, v)) {
+        error.textContent = v + " is " + SF.distance(sq.id, v) + " squares away. The limit is " + scoutRange + ".";
         return;
       }
       SF.addScout(state, me(), planes[0].id, v);
@@ -1113,6 +1126,17 @@
         return bombingText(e, v);
       case "missile":
         return missileText(e, v);
+      case "asat":
+        if (mine) {
+          return "You fired " + e.fired + " anti-satellite " + (e.fired === 1 ? "missile" : "missiles") + ". " +
+            (e.destroyed ? "Destroyed " + e.destroyed + " enemy " + (e.destroyed === 1 ? "satellite." : "satellites.") : "They missed.");
+        }
+        return e.destroyed ? "Enemy anti-satellite missiles destroyed " + e.destroyed + " of your " +
+          (e.destroyed === 1 ? "satellites." : "satellites.") : "Enemy anti-satellite missiles were fired at your satellites, but missed.";
+      case "researched":
+        return mine ? "Research complete: " + SF.tech(e.tech).name + ". " + SF.tech(e.tech).desc : null;
+      case "hint":
+        return mine ? e.text : null;
       case "rebase":
         if (!mine) return null;
         return e.ok ? "Your " + e.what + " moved to " + (e.carrier ? "the carrier at " : "") + e.to + "." :
@@ -1210,6 +1234,9 @@
       if (t) ul.appendChild(el("li", t));
     });
     if (!ul.children.length) ul.appendChild(el("li", "Nothing to report."));
+    if (!SF.researchOf(state, v).queue.length) {
+      ul.appendChild(el("li", "Your research queue is empty. Your science is saved until you add something to the queue, in the Research part of Your nation."));
+    }
     return ul;
   }
 
@@ -1310,6 +1337,126 @@
       r.recruits + " recruits";
   }
 
+  var BRANCH_NAME = {};
+  SF.BRANCHES.forEach(function (b) { BRANCH_NAME[b[0]] = b[1]; });
+
+  function techLine(t) {
+    return t.name + ", " + BRANCH_NAME[t.branch].toLowerCase() + " tier " + t.tier + ", " + t.cost + " science. " + t.desc;
+  }
+
+  function renderResearch(box) {
+    var r = SF.researchOf(state, me());
+    var saved = state.econ[me()].science;
+    var perTurn = SF.income(state, me()).science;
+    box.appendChild(el("h3", "Research"));
+    if (!r.queue.length) {
+      box.appendChild(el("p", "Science saved: " + saved + ". Your research queue is empty, so your science is being saved until you add something."));
+    } else {
+      var t = SF.tech(r.queue[0]);
+      var need = t.cost - saved;
+      var turns = need <= 0 ? 1 : perTurn > 0 ? Math.ceil(need / perTurn) : null;
+      box.appendChild(el("p", "Science saved: " + saved + ". Researching " + t.name + ", " + Math.min(saved, t.cost) +
+        " of " + t.cost + " science" + (turns ? ", about " + turns + (turns === 1 ? " turn" : " turns") + " to go." : ". You have no lab workers.")));
+    }
+
+    box.appendChild(el("h3", "Research queue"));
+    if (!r.queue.length) {
+      box.appendChild(el("p", "Nothing queued."));
+    } else {
+      var ol = el("ol", undefined, "plain");
+      r.queue.forEach(function (id, i) {
+        var t2 = SF.tech(id);
+        var li = el("li");
+        li.appendChild(el("span", (i + 1) + ". " + techLine(t2)));
+        if (i > 0) {
+          var up = el("button", "Move up", "act");
+          up.type = "button";
+          up.setAttribute("aria-label", "Move " + t2.name + " up");
+          up.addEventListener("click", function () {
+            var moved = SF.moveTechUp(state, me(), id);
+            save();
+            renderAll();
+            $("nation-heading").focus();
+            announce(moved ? t2.name + " moved up." : t2.name + " has to come after the research before it in its branch.");
+          });
+          li.appendChild(up);
+        }
+        var rm = el("button", "Remove", "act");
+        rm.type = "button";
+        rm.setAttribute("aria-label", "Remove " + t2.name + " from the queue");
+        rm.addEventListener("click", function () {
+          SF.unqueueTech(state, me(), id);
+          save();
+          renderAll();
+          $("nation-heading").focus();
+          announce(t2.name + " removed, along with anything after it in its branch.");
+        });
+        li.appendChild(rm);
+        ol.appendChild(li);
+      });
+      box.appendChild(ol);
+    }
+
+    var options = SF.queueable(state, me());
+    if (options.length) {
+      box.appendChild(el("h3", "Add research"));
+      var form = el("form", undefined, "order-form");
+      var label = el("label", "Technology");
+      var sel = document.createElement("select");
+      options.forEach(function (t3) {
+        var o = el("option", techLine(t3));
+        o.value = t3.id;
+        sel.appendChild(o);
+      });
+      label.appendChild(sel);
+      form.appendChild(label);
+      submitButton(form, "Add to queue");
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        SF.queueTech(state, me(), sel.value);
+        save();
+        renderAll();
+        $("nation-heading").focus();
+        announce(SF.tech(sel.value).name + " added to the research queue.");
+      });
+      box.appendChild(form);
+    }
+
+    box.appendChild(el("h3", "Completed research"));
+    box.appendChild(el("p", r.done.length ? r.done.map(function (id) { return SF.tech(id).name; }).join(", ") + "." : "None yet."));
+
+    if (SF.effect(state, me(), "codebreaking")) {
+      var theirs = SF.researchOf(state, foe()).done;
+      box.appendChild(el("h3", "Enemy research, from code breaking"));
+      box.appendChild(el("p", theirs.length ? theirs.map(function (id) { return SF.tech(id).name; }).join(", ") + "." : "The enemy has not finished any research yet."));
+    }
+  }
+
+  function renderSatellites(box) {
+    var sats = SF.satellites(state, me());
+    if (!sats.length) return;
+    box.appendChild(el("h3", "Satellites"));
+    box.appendChild(el("p", sats.length + " in orbit. Your missiles and missile defense are " +
+      Math.round(SF.satelliteBonus(state, me()) * 100) + "% more accurate. Each satellite watches the 7 by 7 area around its square."));
+    sats.forEach(function (sat, i) {
+      var form = el("form", undefined, "row");
+      var input = squareInput(form, "Satellite " + (i + 1) + " is watching " + sat.watch + ". New square to watch");
+      submitButton(form, "Change");
+      var error = formError(form);
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var v = input.value.trim().toUpperCase().replace(/\s+/g, "");
+        if (!SF.sq(v)) { error.textContent = "Not a square. Use a letter A to P and a number 1 to 16."; return; }
+        SF.setSatelliteWatch(state, me(), sat.id, v);
+        save();
+        renderAll();
+        $("nation-heading").focus();
+        announce("Satellite " + (i + 1) + " now watching " + v + ".");
+      });
+      box.appendChild(form);
+    });
+  }
+
   function renderNation() {
     var box = $("nation");
     box.innerHTML = "";
@@ -1375,6 +1522,9 @@
       announce("Workforce saved. Each turn: " + resourceList(after) + ".");
     });
     box.appendChild(form);
+
+    renderResearch(box);
+    renderSatellites(box);
 
     box.appendChild(el("h3", "In production"));
     var mine = state.projects.filter(function (p) { return p.owner === me(); });

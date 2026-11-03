@@ -191,7 +191,7 @@ Morale rises from victories and recapturing cities. When morale hits zero, that 
 
 1. **Exact numbers:** unit costs, strength, movement, research costs, and the starting budget. To be settled during building and playtesting.
 2. **The map itself:** placement of cities, rivers, mountains, and bridges.
-3. **Satellites:** can they be shot down, and by what?
+3. **Satellites:** settled. They can be destroyed by anti-satellite missiles.
 
 ## Movement, first version
 
@@ -312,6 +312,33 @@ These numbers are starting points for playtesting.
 
 **Air defense batteries.** A city building that fires like 2 anti-aircraft guns at bombers attacking that city, and at scout planes flying over it.
 
+## Research, first version
+
+These numbers are starting points for playtesting.
+
+**The queue.** Each side keeps a research queue. Science from labs is saved, and whenever enough is saved for the first technology in the queue, it is finished at the end of the turn. Science is never lost. If the queue is empty, it keeps saving, and the turn report reminds you to queue something.
+- Technologies in a branch must be researched in order, tier 1 before tier 2 before tier 3.
+- You can move a technology up the queue, or remove it. Removing one also removes anything after it in its branch.
+- Tier 1 costs 20 science, tier 2 costs 45, and tier 3 costs 80. The nuclear branch costs 30, 60, and 120.
+
+**Pacing from testing.** With the starting 6 lab workers, a side finishes its first tier 2 technology around turn 25. A side that starts with 5 labs and 12 lab workers finishes its first tier 2 by turn 13, and its first tier 3 by turn 28.
+
+**Secrecy.** Research is secret. The first time your units fight enemy units that have been upgraded, the report may give a hint, such as "Enemy tanks seem better armored than before." Code breaking shows the enemy's finished research outright.
+
+**The technologies.**
+- Land: Composite armor, tanks +1 attack and +1 defense. Mechanized infantry, infantry move 3 and +1 defense. Main battle tanks, tanks +2 attack, +1 defense, and move 4.
+- Sea: Improved sonar, destroyer sonar reaches 3 squares and +1 attack. Attack submarines, +2 attack and move 4. Aegis combat system, destroyers +1 defense and 2 shots a turn at missiles, each 75%.
+- Air: Jet fighters, +1 attack, +1 defense, and +2 range. Heavy bombers, +2 range and 15% more likely to hit. Stealth aircraft, bombers +4 defense against fighters, and anti-aircraft fire is half as likely to hit them.
+- Missiles and defense: Guided missiles, 15% more accurate. Layered missile defense, batteries get 3 shots a turn and are 10% more likely to stop a missile. Anti-satellite missiles, missiles can be fired at enemy satellites, 50% each to destroy one.
+- Intelligence: Code breaking, see the enemy's finished research. Satellites, cities with a factory can build them. Deep cover agents, scout planes and satellites can spot special forces and submarines.
+- Economy: Factory automation, factories use 4 workers. Advanced refining, refineries and labs use 1 more worker. Mass production, units cost 20% less industry.
+- Nuclear: Nuclear physics, no effect on its own. Nuclear power, factories and refineries use 1 more worker. Nuclear weapons, needed to build nuclear weapons, which arrive in step 10.
+
+**Satellites.** 30 industry, 6 gasoline, and 3 turns, in a city with a factory, after Satellites research. They go into orbit, not onto the map.
+- Each satellite watches the 7 by 7 area around a square of your choosing, and keeps watching it until you change it. New satellites watch the enemy capital.
+- Each satellite makes your missiles 5% more accurate and your missile defense 5% more likely to stop missiles, up to 20%.
+- Only anti-satellite missiles can destroy them.
+
 ## Economy, first version
 
 These numbers are starting points for playtesting.
@@ -348,6 +375,7 @@ These numbers are starting points for playtesting.
 - Transport: 8 industry, 1 recruit, 3 gasoline, 2 turns. Needs a port.
 - Carrier: 24 industry, 3 recruits, 8 gasoline, 4 turns. Needs a port.
 - Missile: 15 industry, 3 gasoline, 2 turns. Needs a factory.
+- Satellite: 30 industry, 6 gasoline, 3 turns. Needs a factory and Satellites research.
 
 **Buildings.** Factories, refineries, labs, and ports cost 12 industry. Airfields cost 15. Each takes 3 turns. Ports can only go in coastal cities. Air defense batteries cost 10 industry and take 2 turns. Missile defense batteries cost 14 industry and take 3 turns.
 
@@ -387,7 +415,7 @@ Each step ends with something playable to test on iPhone and computer.
    - **6a, sea:** ports, ships, naval battles, transports, invasions, and shore bombardment. (Built.)
    - **6b, air:** fighters, bombers, carriers' planes, and air control. (Built.)
 7. **Missiles and defenses.** (Built.)
-8. **Science and research.**
+8. **Science and research.** (Built.)
 9. **Morale, government types, and victory conditions.**
 10. **Nuclear weapons.**
 11. **A smarter computer opponent.**

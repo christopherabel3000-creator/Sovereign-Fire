@@ -57,6 +57,8 @@ SF.UNIT_TYPES = {
   bomber: { name: "bomber", plural: "bombers", air: true, attack: 1, defense: 2, loss: 1, range: 8 },
   // Missiles are stored in the city that built them and used up when fired.
   missile: { name: "missile", plural: "missiles", air: true, missile: true, attack: 0, defense: 0, loss: 0, range: 14 },
+  // Satellites are not on the map. They are listed here for their names only.
+  satellite: { name: "satellite", plural: "satellites", space: true, loss: 0 },
   // Ships move on ocean squares and dock in port cities you hold. Like
   // planes, they do not hold land squares.
   destroyer: { name: "destroyer", plural: "destroyers", naval: true, move: 4, attack: 5, defense: 5, loss: 3,
