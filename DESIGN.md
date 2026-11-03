@@ -181,12 +181,34 @@ Morale rises from victories and recapturing cities. When morale hits zero, that 
 2. **The map itself:** placement of cities, rivers, mountains, and bridges.
 3. **Satellites:** can they be shot down, and by what?
 
+## Movement, first version
+
+These numbers are starting points for playtesting.
+
+- **Movement points each turn:** tanks 3. Infantry, special forces, engineers, artillery, and anti-aircraft guns 2.
+- **Cost to enter a square:** plains, cities, and bridges 1. Forest and river 2. Mountains 3.
+- A unit with any movement left can always enter one more square, even if it costs more than it has left.
+- Tanks cannot enter river squares, only bridges.
+- Units cannot enter ocean squares or squares holding enemy units.
+- Units moving together use the slowest unit's reach.
+- If both sides' moves end on the same square, both moves are stopped for now. Combat replaces this in step 3.
+
+## Starting armies, first version
+
+Each side starts with the mirror image of this army. South's squares are the same column, mirrored row.
+
+- **F2, capital:** 3 infantry and 1 anti-aircraft gun.
+- **C3:** 2 infantry.
+- **L3:** 2 infantry, 2 tanks, and 1 artillery.
+- **O3:** 2 infantry, 1 tank, 1 engineer, and 1 special forces.
+- **A5, E6, and I6:** 1 infantry each.
+
 ## Build plan
 
 Each step ends with something playable to test on iPhone and computer.
 
-1. **The map:** the 16 by 16 grid, terrain, cities, and ownership, with accessible square descriptions and quick navigation. (First draft built.)
-2. **Units and movement:** starting armies, giving move orders, terrain movement rules, and the lock-in button, played pass-the-phone or against an AI that only defends.
+1. **The map:** the 16 by 16 grid, terrain, cities, and ownership, with accessible square descriptions and quick navigation. (Built.)
+2. **Units and movement:** starting armies, giving move orders, terrain movement rules, and the lock-in button, played pass-the-phone or against an AI that only defends. (Built.)
 3. **Combat:** battles when enemies meet, odds announced before attacking, and turn reports.
 4. **Fog of war:** hidden enemy units, adjacent vision, and scout planes.
 5. **Economy:** cities, buildings, manpower, industry, gasoline, and building new units.

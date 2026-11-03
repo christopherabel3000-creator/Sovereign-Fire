@@ -4,328 +4,75 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sovereign Fire</title>
-<style>
-  :root {
-    --bg: #14161a;
-    --panel: #1e2127;
-    --text: #eceae4;
-    --muted: #a9a59b;
-    --accent: #e0733a;
-    --focus: #ffd54a;
-    --plains: #6f8a4a;
-    --forest: #3d5f36;
-    --mountain: #7b7570;
-    --river: #3f78a8;
-    --bridge: #a8865a;
-    --city: #c9b27a;
-    --ocean: #1f4a6e;
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    background: var(--bg);
-    color: var(--text);
-    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
-  }
-  main { max-width: 900px; margin: 0 auto; padding: 16px; }
-  h1 { color: var(--accent); margin: 0 0 4px; letter-spacing: 0.02em; }
-  h2 { margin: 24px 0 8px; font-size: 1.2rem; }
-  p { margin: 0 0 8px; }
-  .subtitle { color: var(--muted); }
-  .map-wrap { overflow-x: auto; }
-  table.map { border-collapse: collapse; margin: 0 auto; }
-  table.map th {
-    color: var(--muted);
-    font-size: 0.7rem;
-    font-weight: 600;
-    padding: 0 2px;
-    text-align: center;
-  }
-  table.map td { padding: 0; }
-  .sq {
-    width: 30px;
-    height: 30px;
-    border: 1px solid rgba(0,0,0,0.35);
-    color: #111;
-    font: 700 0.75rem/1 system-ui, sans-serif;
-    padding: 0;
-    cursor: pointer;
-  }
-  .sq.enemy { box-shadow: inset 0 0 0 2px rgba(200, 60, 60, 0.85); }
-  .sq.yours { box-shadow: inset 0 0 0 2px rgba(70, 140, 230, 0.85); }
-  .sq.selected { outline: 3px solid var(--focus); outline-offset: -3px; }
-  .sq:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
-  .t-plains { background: var(--plains); }
-  .t-forest { background: var(--forest); color: #dfe8d6; }
-  .t-mountains { background: var(--mountain); color: #f2efe9; }
-  .t-river { background: var(--river); color: #eaf3fb; }
-  .t-bridge { background: var(--bridge); }
-  .t-city { background: var(--city); }
-  .t-ocean { background: var(--ocean); color: #9ec3e3; }
-  .panel {
-    background: var(--panel);
-    border-radius: 8px;
-    padding: 12px 16px;
-  }
-  form.goto { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-  input, button.act {
-    font: inherit;
-    border-radius: 6px;
-    border: 1px solid #4a4f58;
-    background: #2a2e35;
-    color: var(--text);
-    padding: 8px 12px;
-    min-height: 44px;
-  }
-  input { width: 7em; }
-  button.act { cursor: pointer; }
-  button.act:focus-visible, input:focus-visible { outline: 3px solid var(--focus); }
-  ul.cities { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
-  @media (max-width: 560px) {
-    .sq { width: 21px; height: 21px; font-size: 0.6rem; }
-    table.map th { font-size: 0.6rem; padding: 0 1px; }
-    main { padding: 16px 8px; }
-  }
-</style>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
 <main>
   <h1>Sovereign Fire</h1>
-  <p class="subtitle">Map preview. Your nation holds the north, the enemy holds the south.</p>
+  <div id="announcer" class="visually-hidden" aria-live="polite"></div>
 
-  <h2 id="selected-heading">Selected square</h2>
-  <div class="panel" id="details" aria-live="polite">
-    <p>No square selected yet.</p>
+  <section id="setup" hidden>
+    <h2 id="setup-heading" tabindex="-1">New game</h2>
+    <ul class="plain">
+      <li id="continue-item" hidden><button class="act primary" type="button" id="continue-btn"></button></li>
+      <li><button class="act" type="button" id="new-computer">Play against the computer</button></li>
+      <li><button class="act" type="button" id="new-hotseat">Pass and play with a friend</button></li>
+    </ul>
+  </section>
+
+  <section id="handoff" hidden>
+    <h2 id="handoff-heading" tabindex="-1"></h2>
+    <div id="handoff-report"></div>
+    <p><button class="act primary" type="button" id="handoff-btn"></button></p>
+  </section>
+
+  <div id="game" hidden>
+    <h2 id="status" tabindex="-1"></h2>
+
+    <section id="report-section" hidden>
+      <h2 id="report-heading" tabindex="-1"></h2>
+      <div id="report"></div>
+    </section>
+
+    <h2>Map</h2>
+    <div class="map-wrap">
+      <table class="map" id="map">
+        <caption class="muted">16 by 16 grid. Columns A to P, rows 1 to 16.</caption>
+      </table>
+    </div>
+
+    <h2 id="selected-heading" tabindex="-1">Selected square</h2>
+    <div class="panel" id="details"><p>No square selected yet.</p></div>
+
+    <h2 id="orders-heading" tabindex="-1">Your orders</h2>
+    <div id="orders"></div>
+    <div class="row">
+      <button class="act" type="button" id="next-btn">Next units without orders</button>
+      <button class="act primary" type="button" id="lock-btn">Lock in orders</button>
+    </div>
+
+    <h2>Go to square</h2>
+    <form class="row" id="goto-form">
+      <label for="goto-input">Square, like D7</label>
+      <input id="goto-input" autocomplete="off" autocapitalize="characters" spellcheck="false">
+      <button class="act" type="submit">Go</button>
+    </form>
+    <p id="goto-error" role="alert"></p>
+
+    <h2>Your cities</h2>
+    <ul class="plain" id="your-cities"></ul>
+
+    <h2>Enemy cities</h2>
+    <ul class="plain" id="enemy-cities"></ul>
+
+    <h2>Game</h2>
+    <p><button class="act" type="button" id="quit-btn">Start a new game</button></p>
   </div>
-
-  <h2>Go to square</h2>
-  <form class="goto" id="goto-form">
-    <label for="goto-input">Square, like D7</label>
-    <input id="goto-input" autocomplete="off" autocapitalize="characters" spellcheck="false">
-    <button class="act" type="submit">Go</button>
-  </form>
-  <p id="goto-error" role="alert"></p>
-
-  <h2>Map</h2>
-  <div class="map-wrap">
-    <table class="map" id="map">
-      <caption class="subtitle">16 by 16 grid. Columns A to P, rows 1 to 16.</caption>
-    </table>
-  </div>
-
-  <h2>Your cities</h2>
-  <ul class="cities" id="your-cities"></ul>
-
-  <h2>Enemy cities</h2>
-  <ul class="cities" id="enemy-cities"></ul>
 </main>
 
-<script>
-(function () {
-  "use strict";
-
-  var SIZE = 16;
-  var COLS = "ABCDEFGHIJKLMNOP";
-
-  // North half of the map, rows 1 to 8, columns A to P.
-  // The south half is a mirror image, so both nations have identical terrain.
-  // P plains, F forest, M mountains, R river, B bridge, C city, K capital, ~ ocean
-  var NORTH = [
-    "MMFFPPPFFMMPFPFM",
-    "FFPPPKPPPMFPPPPF",
-    "PPCPPPPFPPPCPPCP",
-    "PPPRRBRRRBRRRBRR",
-    "CPPPPPPFPPPPFPPF",
-    "~~PPCPPPCPPPPFPP",
-    "~~~~~~~~~~PPMMPF",
-    "~~~~~~~~~~~PPPPP"
-  ];
-
-  var TERRAIN = {
-    P: { key: "plains", name: "plains", mark: "" },
-    F: { key: "forest", name: "forest", mark: "F" },
-    M: { key: "mountains", name: "mountains", mark: "M" },
-    R: { key: "river", name: "river", mark: "R" },
-    B: { key: "bridge", name: "bridge", mark: "B" },
-    C: { key: "city", name: "city", mark: "C" },
-    K: { key: "city", name: "capital city", mark: "K" },
-    "~": { key: "ocean", name: "ocean", mark: "" }
-  };
-
-  var NOTES = {
-    plains: "Fast movement. Tanks attack easily here.",
-    forest: "Slower movement and a defense bonus.",
-    mountains: "Very slow movement and a huge defense bonus. Tank attacks almost never succeed.",
-    river: "Infantry cross slowly. Tanks cannot cross.",
-    bridge: "The only river crossing for tanks. Can be destroyed and rebuilt.",
-    city: "Produces everything. Defense bonus.",
-    ocean: "Ships only."
-  };
-
-  // Build the full grid.
-  var grid = [];
-  for (var r = 0; r < SIZE; r++) {
-    var row = [];
-    for (var c = 0; c < SIZE; c++) {
-      var northRow = r < 8 ? r : SIZE - 1 - r;
-      var code = NORTH[northRow].charAt(c);
-      var t = TERRAIN[code];
-      row.push({
-        row: r,
-        col: c,
-        id: COLS.charAt(c) + (r + 1),
-        code: code,
-        terrain: t,
-        owner: t.key === "ocean" ? null : (r < 8 ? "yours" : "enemy")
-      });
-    }
-    grid.push(row);
-  }
-
-  function isCoastal(sq) {
-    var dirs = [[-1,0],[1,0],[0,-1],[0,1]];
-    for (var i = 0; i < dirs.length; i++) {
-      var nr = sq.row + dirs[i][0], nc = sq.col + dirs[i][1];
-      if (nr >= 0 && nr < SIZE && nc >= 0 && nc < SIZE && grid[nr][nc].code === "~") return true;
-    }
-    return false;
-  }
-
-  function terrainName(sq) {
-    var name = sq.terrain.name;
-    if (sq.terrain.key === "city" && isCoastal(sq)) name = "coastal " + name;
-    return name;
-  }
-
-  function ownerName(sq) {
-    if (sq.owner === "yours") return "yours";
-    if (sq.owner === "enemy") return "enemy";
-    return "";
-  }
-
-  function label(sq) {
-    var parts = [sq.id, terrainName(sq)];
-    var o = ownerName(sq);
-    if (o) parts.push(o);
-    return parts.join(", ");
-  }
-
-  // Render the table.
-  var table = document.getElementById("map");
-  var thead = document.createElement("thead");
-  var hr = document.createElement("tr");
-  var corner = document.createElement("td");
-  hr.appendChild(corner);
-  for (var hc = 0; hc < SIZE; hc++) {
-    var th = document.createElement("th");
-    th.scope = "col";
-    th.textContent = COLS.charAt(hc);
-    hr.appendChild(th);
-  }
-  thead.appendChild(hr);
-  table.appendChild(thead);
-
-  var tbody = document.createElement("tbody");
-  var buttons = {};
-  grid.forEach(function (row, r) {
-    var tr = document.createElement("tr");
-    var rh = document.createElement("th");
-    rh.scope = "row";
-    rh.textContent = String(r + 1);
-    tr.appendChild(rh);
-    row.forEach(function (sq) {
-      var td = document.createElement("td");
-      var b = document.createElement("button");
-      b.type = "button";
-      b.className = "sq t-" + sq.terrain.key + (sq.owner ? " " + sq.owner : "");
-      b.setAttribute("aria-label", label(sq));
-      b.textContent = sq.terrain.mark;
-      b.addEventListener("click", function () { select(sq); });
-      b.addEventListener("keydown", function (e) { arrowMove(e, sq); });
-      buttons[sq.id] = b;
-      td.appendChild(b);
-      tr.appendChild(td);
-    });
-    tbody.appendChild(tr);
-  });
-  table.appendChild(tbody);
-
-  var selected = null;
-  var details = document.getElementById("details");
-
-  function select(sq) {
-    if (selected) buttons[selected.id].classList.remove("selected");
-    selected = sq;
-    buttons[sq.id].classList.add("selected");
-    var o = ownerName(sq);
-    var lines = [];
-    lines.push(sq.id + ", " + terrainName(sq) + (o ? ", " + o : "") + ".");
-    lines.push(NOTES[sq.terrain.key]);
-    if (sq.terrain.key === "city" && isCoastal(sq)) lines.push("Can build a port.");
-    details.innerHTML = "";
-    lines.forEach(function (text) {
-      var p = document.createElement("p");
-      p.textContent = text;
-      details.appendChild(p);
-    });
-  }
-
-  function focusSquare(sq) {
-    buttons[sq.id].focus();
-    select(sq);
-  }
-
-  // Arrow keys move between squares on a computer.
-  function arrowMove(e, sq) {
-    var dr = 0, dc = 0;
-    if (e.key === "ArrowUp") dr = -1;
-    else if (e.key === "ArrowDown") dr = 1;
-    else if (e.key === "ArrowLeft") dc = -1;
-    else if (e.key === "ArrowRight") dc = 1;
-    else return;
-    var nr = sq.row + dr, nc = sq.col + dc;
-    if (nr < 0 || nr >= SIZE || nc < 0 || nc >= SIZE) return;
-    e.preventDefault();
-    focusSquare(grid[nr][nc]);
-  }
-
-  // Go to square.
-  var form = document.getElementById("goto-form");
-  var input = document.getElementById("goto-input");
-  var err = document.getElementById("goto-error");
-  form.addEventListener("submit", function (e) {
-    e.preventDefault();
-    var v = input.value.trim().toUpperCase().replace(/\s+/g, "");
-    var m = /^([A-P])(\d{1,2})$/.exec(v);
-    var n = m ? parseInt(m[2], 10) : 0;
-    if (!m || n < 1 || n > SIZE) {
-      err.textContent = "Not a square. Use a letter A to P and a number 1 to 16.";
-      return;
-    }
-    err.textContent = "";
-    focusSquare(grid[n - 1][COLS.indexOf(m[1])]);
-  });
-
-  // City lists.
-  function fillCities(listId, owner) {
-    var ul = document.getElementById(listId);
-    grid.forEach(function (row) {
-      row.forEach(function (sq) {
-        if (sq.terrain.key !== "city" || sq.owner !== owner) return;
-        var li = document.createElement("li");
-        var b = document.createElement("button");
-        b.type = "button";
-        b.className = "act";
-        b.textContent = sq.id + ", " + terrainName(sq);
-        b.addEventListener("click", function () { focusSquare(sq); });
-        li.appendChild(b);
-        ul.appendChild(li);
-      });
-    });
-  }
-  fillCities("your-cities", "yours");
-  fillCities("enemy-cities", "enemy");
-})();
-</script>
+<script src="js/data.js"></script>
+<script src="js/map.js"></script>
+<script src="js/rules.js"></script>
+<script src="js/ui.js"></script>
 </body>
 </html>
