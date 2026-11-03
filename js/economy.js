@@ -201,7 +201,8 @@
   SF.manpower = function (state, owner) {
     var total = 0;
     SF.citiesOf(state, owner).forEach(function (id) { total += homeInfo(id).pop * SF.cityRate(state, id); });
-    return Math.floor(total);
+    var g = state.nations ? SF.gov(state, owner) : null;
+    return Math.floor(total * ((g && g.manpower) || 1));
   };
 
   // How many workers this side's buildings can use in a job.
@@ -230,8 +231,10 @@
 
   SF.income = function (state, owner) {
     var staffed = SF.staffed(state, owner), out = {};
+    var mult = state.nations ? SF.gov(state, owner).income : {};
     SF.JOB_ORDER.forEach(function (j) {
-      out[SF.JOBS[j].resource] = Math.min(staffed[j], SF.capacity(state, owner, j));
+      var r = SF.JOBS[j].resource;
+      out[r] = Math.round(Math.min(staffed[j], SF.capacity(state, owner, j)) * (mult[r] || 1));
     });
     return out;
   };
@@ -254,8 +257,10 @@
   SF.unitCost = function (state, owner, type) {
     var base = SF.UNIT_COST[type];
     var cost = JSON.parse(JSON.stringify(base));
-    cost.industry = Math.floor(base.industry * (1 - SF.effect(state, owner, "discount")));
+    var g = state.nations ? SF.gov(state, owner) : {};
+    cost.industry = Math.floor(base.industry * (1 - SF.effect(state, owner, "discount") - (g.unitDiscount || 0)));
     cost.gasoline = base.gasoline || 0;
+    cost.turns = Math.max(1, base.turns - (g.fasterBuild || 0));
     return cost;
   };
 

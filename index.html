@@ -22,6 +22,19 @@
 
   <section id="plan" hidden>
     <h2 id="plan-heading" tabindex="-1"></h2>
+    <h3>Your nation</h3>
+    <div class="order-form">
+      <label>Government
+        <select id="plan-gov"></select>
+      </label>
+      <p id="plan-gov-desc" aria-live="polite"></p>
+      <label>Nation name
+        <input id="plan-name" autocomplete="off" maxlength="40" style="width: 16em">
+      </label>
+      <p><button class="act" type="button" id="plan-random">Suggest a name</button></p>
+    </div>
+    <p>Your government will be shown to your opponent.</p>
+    <h3>Starting buildings</h3>
     <p>Choose your starting buildings. Your opponent will not see them.</p>
     <p>Factories make industry, refineries make gasoline, and labs make science. Each one can use up to 3 workers. Airfields let a city build planes. Tanks and artillery need a factory in the city that builds them.</p>
     <p id="plan-left" aria-live="polite"></p>
@@ -37,6 +50,14 @@
     <h2 id="handoff-heading" tabindex="-1"></h2>
     <div id="handoff-report"></div>
     <p><button class="act primary" type="button" id="handoff-btn"></button></p>
+  </section>
+
+  <section id="over" hidden>
+    <h2 id="over-heading" tabindex="-1"></h2>
+    <div id="over-text"></div>
+    <h3>Last turn</h3>
+    <div id="over-report"></div>
+    <p><button class="act primary" type="button" id="over-new">Start a new game</button></p>
   </section>
 
   <div id="game" hidden>
@@ -91,6 +112,7 @@
 <script src="js/rules.js"></script>
 <script src="js/economy.js"></script>
 <script src="js/tech.js"></script>
+<script src="js/morale.js"></script>
 <script src="js/ui.js"></script>
 </body>
 </html>

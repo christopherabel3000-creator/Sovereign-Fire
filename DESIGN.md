@@ -11,12 +11,12 @@ Sovereign Fire is a turn-based modern war between two nations. Both players secr
 
 ## Pre-game setup
 
-1. **Name your nation,** or pick from randomly generated fictional names.
+1. **Name your nation,** or press Suggest a name for a random fictional one, such as the Republic of Valdoria. The two players cannot use the same name.
 2. **Choose a government.** Government type is revealed to both players at the start.
-   - **Democracy:** better science and economy. Morale drops faster from heavy losses and bombing. One-time ability: rally morale when the capital is threatened.
-   - **Authoritarian State:** steadier morale, and losses hurt less. Can draft extra manpower in emergencies. Science is slower.
-   - **Military State:** units are cheaper and faster to build. Weaker economy and science. Morale falls if it isn't winning. One-time ability: mass conscription.
-   - **Scientific Republic:** the strongest science. Smaller manpower, so smaller armies.
+   - **Democracy:** science up 25% and industry up 10%. Losses, bombing, and lost cities hurt morale 50% more. Once per game, when enemy troops are within 2 squares of the capital or morale is below 40, it can rally the nation for 20 morale.
+   - **Authoritarian State:** losses, bombing, and lost cities hurt morale 40% less. Science down 25%. Every 8 turns it can order an emergency draft for 8 recruits, at a cost of 3 morale.
+   - **Military State:** units cost 20% less industry and take 1 less turn to build, never less than 1. Industry and science down 20%. Morale falls 2 a turn without a battle won in the last 3 turns. Once per game, mass conscription gives 12 recruits and 4 infantry at the capital.
+   - **Scientific Republic:** science up 50%. Manpower down 20%. Once per game, a research breakthrough gives 40 science.
 3. **Choose starting buildings** with a fixed budget. Starting buildings are secret from the opponent.
 
 ## Map
@@ -156,15 +156,23 @@ Neglecting science can give an early edge through cheap units and an early offen
 
 ## Morale
 
-Morale drops from:
+Morale runs from 0 to 100, and every nation starts at 100. When it reaches 0, that nation surrenders. Your own morale is shown exactly. The enemy's is described in words: high, steady, shaken, low, or near breaking.
 
-- Lost cities
-- Heavy losses
-- Bombed cities
-- Blockaded ports
-- Using nuclear weapons first
+Each turn, morale changes from:
+- Units lost: 0.5 for each ground unit, 1 for each ship or plane.
+- Buildings destroyed by bombs or missiles: 2 each.
+- Each bombing raid or missile strike that lands on one of your cities: 1.
+- A city lost: 8. The capital lost: 20.
+- Each blockaded port: 1 a turn.
+- Military State only: 2 a turn without a battle won in the last 3 turns.
+- Using nuclear weapons first: coming in step 10.
 
-Morale rises from victories and recapturing cities. When morale hits zero, that nation surrenders.
+Morale rises from:
+- Battles won: 1 each, up to 3 a turn.
+- An enemy city captured: 4. The enemy capital: 10.
+- One of your own cities retaken: 6.
+
+Government changes how hard the bad news hits: 50% more for a Democracy, 40% less for an Authoritarian State.
 
 ## Nuclear weapons
 
@@ -175,9 +183,12 @@ Morale rises from victories and recapturing cities. When morale hits zero, that 
 
 ## Victory conditions
 
-- **Annihilation:** the enemy has no units left and no way to build more.
-- **Surrender:** the enemy's morale reaches zero.
-- **Conquest:** you capture all enemy cities.
+Checked at the end of every turn.
+- **Surrender:** a nation's morale reaches 0.
+- **Conquest:** a nation holds no cities.
+- **Annihilation:** a nation has no units left and no way to build more.
+
+If both nations fall in the same turn, the war ends in a draw. The game over screen names the winner, how the war ended, and each side's morale, cities, and units, followed by the last turn's report.
 
 ## Accessibility
 
@@ -416,7 +427,7 @@ Each step ends with something playable to test on iPhone and computer.
    - **6b, air:** fighters, bombers, carriers' planes, and air control. (Built.)
 7. **Missiles and defenses.** (Built.)
 8. **Science and research.** (Built.)
-9. **Morale, government types, and victory conditions.**
+9. **Morale, government types, and victory conditions.** (Built.)
 10. **Nuclear weapons.**
 11. **A smarter computer opponent.**
 12. **Online play with Firebase,** in the game's own section of the database.

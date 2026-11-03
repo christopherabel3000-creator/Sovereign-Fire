@@ -5,7 +5,7 @@
   "use strict";
 
   var SAVE_KEY = "sovereignFire.save";
-  var SAVE_VERSION = 5;
+  var SAVE_VERSION = 6;
   var state = null;
   var selected = null;     // id of the selected square
   var buttons = {};        // map square buttons by id
@@ -32,7 +32,10 @@
   // ---------- Helpers ----------
   function me() { return state.current; }
   function foe() { return 1 - state.current; }
-  function sideName(owner) { return owner === 0 ? "North" : "South"; }
+  function sideName(owner) {
+    var n = state && state.nations && state.nations[owner];
+    return n ? n.name : (owner === 0 ? "North" : "South");
+  }
   function territory(sq) {
     if (sq.home === null) return "";
     return sq.home === me() ? "yours" : "enemy";
@@ -69,7 +72,7 @@
   }
 
   function show(which) {
-    ["setup", "plan", "handoff", "game"].forEach(function (id) { $(id).hidden = id !== which; });
+    ["setup", "plan", "handoff", "over", "game"].forEach(function (id) { $(id).hidden = id !== which; });
   }
 
   // ---------- Map ----------
@@ -1137,6 +1140,12 @@
         return mine ? "Research complete: " + SF.tech(e.tech).name + ". " + SF.tech(e.tech).desc : null;
       case "hint":
         return mine ? e.text : null;
+      case "morale":
+        if (!mine) return null;
+        return "Morale " + (e.to > e.from ? "rose" : "fell") + " from " + e.from + " to " + e.to +
+          (e.reasons.length ? ": " + e.reasons.join(", ") : "") + ".";
+      case "gameOver":
+        return null;
       case "rebase":
         if (!mine) return null;
         return e.ok ? "Your " + e.what + " moved to " + (e.carrier ? "the carrier at " : "") + e.to + "." :
@@ -1252,7 +1261,7 @@
 
   // ---------- Screens ----------
   function renderStatus() {
-    var who = state.mode === "hotseat" ? sideName(me()) + "'s orders" : "Your orders";
+    var who = state.mode === "hotseat" ? sideName(me()) + " gives orders" : sideName(me()) + ", your orders";
     $("status").textContent = "Turn " + state.turn + ". " + who + ".";
   }
 
@@ -1270,11 +1279,32 @@
     $("plan-left").textContent = "Buildings chosen: " + used + " of " + SF.START_BUDGET + ".";
   }
 
+  var planNation = null;   // { name, gov } being chosen on the setup screen
+
+  function renderPlanGov() {
+    $("plan-gov-desc").textContent = SF.GOVERNMENTS[planNation.gov].desc;
+  }
+
   function renderPlan() {
     show("plan");
     if (!plan) plan = SF.defaultPlan(me());
+    if (!planNation) {
+      var avoid = me() === 1 ? SF.nation(state, 0).name : null;
+      planNation = { gov: "democracy" };
+      planNation.name = SF.randomNationName(planNation.gov, avoid);
+    }
     $("plan-heading").textContent = state.mode === "hotseat" ?
-      sideName(me()) + ", choose your starting buildings" : "Choose your starting buildings";
+      (me() === 0 ? "First player" : "Second player") + ", set up your nation" : "Set up your nation";
+    var govSel = $("plan-gov");
+    govSel.innerHTML = "";
+    SF.GOVERNMENT_ORDER.forEach(function (g) {
+      var o = el("option", SF.GOVERNMENTS[g].name);
+      o.value = g;
+      govSel.appendChild(o);
+    });
+    govSel.value = planNation.gov;
+    $("plan-name").value = planNation.name;
+    renderPlanGov();
     $("plan-error").textContent = "";
     var box = $("plan-cities");
     box.innerHTML = "";
@@ -1313,8 +1343,16 @@
   function confirmPlan() {
     var problem = SF.planProblem(me(), plan);
     if (problem) { $("plan-error").textContent = problem; return; }
+    var name = $("plan-name").value.trim();
+    if (!name) { $("plan-error").textContent = "Give your nation a name, or press Suggest a name."; return; }
+    if (state.mode === "hotseat" && me() === 1 && name === SF.nation(state, 0).name) {
+      $("plan-error").textContent = "That name is taken by the other player.";
+      return;
+    }
+    SF.setNation(state, me(), name, $("plan-gov").value);
     SF.applyPlan(state, me(), plan);
     plan = null;
+    planNation = null;
     if (state.mode === "computer") {
       state.phase = "orders";
     } else if (me() === 0) {
@@ -1463,6 +1501,31 @@
     var e = state.econ[me()];
     var inc = SF.income(state, me());
     var mp = SF.manpower(state, me());
+    var nat = SF.nation(state, me()), g = SF.gov(state, me());
+    var enemy = SF.nation(state, foe());
+    box.appendChild(el("p", nat.name + ", " + g.name + ". Morale " + nat.morale + " of 100. At 0, your nation surrenders."));
+    box.appendChild(el("p", "Your enemy: " + enemy.name + ", " + SF.GOVERNMENTS[enemy.gov].name +
+      ". Their morale looks " + SF.moraleWord(enemy.morale) + "."));
+    var ability = SF.ABILITIES[g.ability];
+    var problem = SF.abilityProblem(state, me());
+    var ab = el("button", ability.name, "act");
+    ab.type = "button";
+    if (problem) {
+      ab.setAttribute("aria-disabled", "true");
+      ab.setAttribute("aria-label", ability.name + ", not available. " + problem);
+    }
+    ab.addEventListener("click", function () {
+      var why = SF.abilityProblem(state, me());
+      if (why) { announce(why); return; }
+      var msg = SF.useAbility(state, me());
+      save();
+      renderAll();
+      $("nation-heading").focus();
+      announce(msg);
+    });
+    var abp = el("p");
+    abp.appendChild(ab);
+    box.appendChild(abp);
     box.appendChild(el("p", "Stockpile: " + resourceList(e) + "."));
     box.appendChild(el("p", "Each turn: " + resourceList(inc) + ", from " + mp + " manpower."));
 
@@ -1563,6 +1626,7 @@
 
   function renderAll() {
     if (!state) { renderSetup(); return; }
+    if (state.over) { renderGameOver(); return; }
     if (state.phase === "handoff") { renderHandoff(); return; }
     if (state.phase === "setup") { renderPlan(); return; }
     show("game");
@@ -1594,10 +1658,42 @@
     $("handoff-btn").textContent = "Start " + to + "'s turn";
   }
 
+  var REASONS = {
+    surrender: "surrendered when its morale collapsed",
+    conquest: "lost every one of its cities",
+    annihilation: "was left with no army and no way to build one"
+  };
+
+  function renderGameOver() {
+    show("over");
+    var r = state.over, box = $("over-text");
+    box.innerHTML = "";
+    if (r.winner === "draw") {
+      $("over-heading").textContent = "The war ends in a draw";
+      box.appendChild(el("p", "Both nations fell in the same turn."));
+    } else {
+      var winner = sideName(r.winner), loser = sideName(r.loser);
+      var mine = state.mode === "computer" ? (r.winner === 0 ? "Victory. " : "Defeat. ") : "";
+      $("over-heading").textContent = mine + winner + " wins";
+      box.appendChild(el("p", loser + " " + REASONS[r.reason] + ", on turn " + (state.turn - 1) + "."));
+    }
+    [0, 1].forEach(function (o) {
+      var n = SF.nation(state, o);
+      box.appendChild(el("p", n.name + ", " + SF.GOVERNMENTS[n.gov].name + ": morale " + n.morale +
+        ", " + SF.citiesOf(state, o).length + " cities, " +
+        state.units.filter(function (u) { return u.owner === o; }).length + " units."));
+    });
+    var rep = $("over-report");
+    rep.innerHTML = "";
+    vis = SF.vision(state, state.mode === "computer" ? 0 : state.current);
+    if (state.report) rep.appendChild(reportList(state.report, state.mode === "computer" ? 0 : state.current));
+  }
+
   function startGame(mode) {
     state = SF.newGame(mode);
     selected = null;
     plan = null;
+    planNation = null;
     save();
     renderAll();
     $("plan-heading").focus();
@@ -1610,7 +1706,7 @@
       selected = null;
       save();
       renderAll();
-      $("report-heading").focus();
+      $(state.over ? "over-heading" : "report-heading").focus();
       return;
     }
     if (me() === 0) {
@@ -1618,6 +1714,13 @@
     } else {
       SF.resolveTurn(state);
       state.current = 0;
+      if (state.over) {
+        selected = null;
+        save();
+        renderAll();
+        $("over-heading").focus();
+        return;
+      }
     }
     state.phase = "handoff";
     state.afterHandoff = "orders";
@@ -1637,7 +1740,7 @@
     selected = null;
     plan = null;
     renderAll();
-    var focus = { handoff: "handoff-heading", setup: "plan-heading" }[state.phase] || "status";
+    var focus = state.over ? "over-heading" : { handoff: "handoff-heading", setup: "plan-heading" }[state.phase] || "status";
     $(focus).focus();
   });
   $("handoff-btn").addEventListener("click", function () {
@@ -1654,6 +1757,23 @@
     announce("Balanced plan restored.");
   });
   $("plan-done").addEventListener("click", confirmPlan);
+  $("plan-gov").addEventListener("change", function () {
+    planNation.gov = $("plan-gov").value;
+    renderPlanGov();
+  });
+  $("plan-name").addEventListener("input", function () { planNation.name = $("plan-name").value; });
+  $("plan-random").addEventListener("click", function () {
+    var avoid = me() === 1 ? SF.nation(state, 0).name : null;
+    planNation.name = SF.randomNationName($("plan-gov").value, avoid);
+    $("plan-name").value = planNation.name;
+    announce("Suggested name: " + planNation.name + ".");
+  });
+  $("over-new").addEventListener("click", function () {
+    clearSave();
+    state = null;
+    renderAll();
+    $("setup-heading").focus();
+  });
   $("lock-btn").addEventListener("click", lockIn);
   $("next-btn").addEventListener("click", nextWaiting);
   $("quit-btn").addEventListener("click", function () {

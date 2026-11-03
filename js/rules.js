@@ -30,8 +30,13 @@
       });
     });
     SF.initEconomy(state);
-    // The computer picks its starting buildings straight away.
-    if (mode === "computer") SF.applyPlan(state, 1, SF.defaultPlan(1));
+    SF.initNations(state);
+    // The computer picks its nation and starting buildings straight away.
+    if (mode === "computer") {
+      var gov = SF.GOVERNMENT_ORDER[Math.floor(Math.random() * SF.GOVERNMENT_ORDER.length)];
+      SF.setNation(state, 1, SF.randomNationName(gov), gov);
+      SF.applyPlan(state, 1, SF.defaultPlan(1));
+    }
     return state;
   };
 
@@ -624,6 +629,12 @@
     statState = state;
     var events = [];
     state.hinted = state.hinted || [[], []];
+    // What happened to each side this turn, for morale.
+    var tally = { lost: [0, 0], wrecked: [0, 0], struck: [0, 0], wins: [0, 0] };
+    function struck(id, side) {
+      var c = state.cities[id];
+      if (c && c.owner === side) tally.struck[side]++;
+    }
 
     // The first time a side runs into an enemy technology, it may notice.
     function hint(owner, techId, viewer) {
@@ -661,6 +672,7 @@
       units.forEach(function (u) {
         if (!alive[u.id]) return;
         delete alive[u.id];
+        tally.lost[u.owner] += isGround(u) || isCargo(u) && !isAir(u) ? SF.MORALE.unitLost : SF.MORALE.bigUnitLost;
         if (u.type === "transport" || u.type === "carrier") {
           var aboard = living().filter(function (c) { return c.aboard === u.id; });
           if (aboard.length) {
@@ -783,6 +795,7 @@
             var k = kinds[Math.floor(rand() * kinds.length)];
             c.buildings[k] -= 1;
             wrecked.push(SF.BUILDINGS[k].name);
+            tally.wrecked[c.owner]++;
           }
         } else if (e.order.mode === "bridge") {
           if (!SF.bridgeBroken(state, target) && rand() < SF.BOMB_BRIDGE + SF.effect(state, e.owner, "bombChance")) {
@@ -793,6 +806,7 @@
       });
       ev.killed = SF.describeUnits(killed);
       ev.wrecked = wrecked;
+      if (flying.length) struck(target, 1 - e.owner);
       if (killed.length || wrecked.length || ev.bridge) hint(e.owner, "heavyBombers", 1 - e.owner);
       events.push(ev);
     });
@@ -850,6 +864,7 @@
             var k = kinds[Math.floor(rand() * kinds.length)];
             c.buildings[k] -= 1;
             wrecked.push(SF.BUILDINGS[k].name);
+            tally.wrecked[foeSide]++;
           }
         } else {
           for (var h = 0; h < SF.MISSILE_HITS; h++) {
@@ -866,6 +881,7 @@
         }
       }
       if (killed.length || wrecked.length) hint(e.owner, "guided", foeSide);
+      if (landed) struck(target, foeSide);
       events.push({
         type: "missile", owner: e.owner, from: e.order.from, at: target, mode: e.order.mode,
         fired: missiles.length, stopped: stopped, killed: SF.describeUnits(killed), wrecked: wrecked
@@ -911,6 +927,9 @@
 
     function battleEvent(at, attOwner, att, def, outcome, meeting, landing) {
       var hold = sky[at];
+      var winner = outcome.result === "attacker" ? attOwner :
+        outcome.result === "defender" || (outcome.result === "held" && !meeting) ? 1 - attOwner : null;
+      if (winner !== null) tally.wins[winner]++;
       events.push({
         air: hold === 0 || hold === 1 ? hold : null,
         type: "battle",
@@ -1185,6 +1204,12 @@
     SF.advanceProjects(state, events);
     SF.collectIncome(state, events);
     SF.advanceResearch(state, events);
+    SF.applyMorale(state, events, tally);
+    var result = SF.checkVictory(state);
+    if (result) {
+      state.over = result;
+      events.push({ type: "gameOver", result: result });
+    }
     statState = null;
 
     state.report = { turn: state.turn, mode: state.mode, events: events };
