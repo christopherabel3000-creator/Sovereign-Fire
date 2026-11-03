@@ -476,6 +476,22 @@
     return order;
   };
 
+  // Fire missiles stored in a city at any square in range, seen or not.
+  // mode: "units" hits whatever enemy units are there; "buildings" hits an enemy city.
+  SF.addMissile = function (state, owner, ids, target, mode) {
+    var ms = checkUnits(state, owner, ids);
+    ms.forEach(function (u) { if (u.type !== "missile") throw new Error("Not a missile"); });
+    if (!SF.sq(target)) throw new Error("Not a square");
+    if (distance(ms[0].at, target) > SF.UNIT_TYPES.missile.range) throw new Error("Out of range");
+    if (mode === "buildings") {
+      var c = state.cities[target];
+      if (!c || c.owner !== 1 - owner) throw new Error("Not an enemy city");
+    } else if (mode !== "units") throw new Error("Bad mode");
+    var order = { id: state.nextOrderId++, kind: "missile", unitIds: ids.slice(), from: ms[0].at, to: target, mode: mode };
+    state.orders[owner].push(order);
+    return order;
+  };
+
   SF.cancelOrder = function (state, owner, orderId) {
     state.orders[owner].forEach(function (o) {
       if (o.id === orderId && o.gas) state.econ[owner].gasoline += o.gas;
@@ -621,6 +637,18 @@
       state.orders[owner].forEach(function (o) { all.push({ owner: owner, order: o }); });
     });
 
+    // Air defense batteries in this side's cities on these squares, as
+    // extra anti-aircraft shots.
+    function batteryShots(side, squares) {
+      var shots = [];
+      squares.forEach(function (id) {
+        var c = state.cities[id];
+        if (!c || c.owner !== side) return;
+        for (var i = 0; i < c.buildings.airDefense * SF.AIR_DEFENSE_SHOTS; i++) shots.push(id);
+      });
+      return shots;
+    }
+
     // 1. The air war: fighter patrols meet, bombers try to get through.
     var patrols = all.filter(function (e) { return e.order.kind === "patrol"; }).map(function (e) {
       return { owner: e.owner, at: e.order.to, area: around(e.order.to, SF.PATROL_RADIUS), units: unitsOf(e.order) };
@@ -683,10 +711,10 @@
           lostAtt: SF.describeUnits(out.attLost), lostDef: SF.describeUnits(out.defLost)
         };
       }
-      // Anti-aircraft guns on the target fire at what is left.
+      // Anti-aircraft guns and air defense batteries on the target fire at what is left.
       var guns = living().filter(function (u) {
         return u.type === "antiAir" && u.at === target && u.owner !== e.owner && isGround(u);
-      });
+      }).concat(batteryShots(1 - e.owner, [target]));
       var shotDown = [];
       guns.forEach(function () {
         var left = bombers.filter(function (u) { return alive[u.id]; });
@@ -725,7 +753,73 @@
       events.push(ev);
     });
 
-    // 2. Artillery and destroyers fire.
+    // 2. Missiles strike. Each one is engaged in turn by missile defense
+    // batteries in cities within 1 square of the target, then by destroyers
+    // within 1 square, until it is shot down or nothing has shots left.
+    var shotsUsed = {};
+    all.filter(function (e) { return e.order.kind === "missile"; }).forEach(function (e) {
+      var missiles = unitsOf(e.order);
+      if (!missiles.length) return;
+      missiles.forEach(function (m) { delete alive[m.id]; });
+      var target = e.order.to, foeSide = 1 - e.owner;
+      var near = around(target, 1);
+      var layers = [];
+      near.forEach(function (id) {
+        var c = state.cities[id];
+        if (c && c.owner === foeSide && c.buildings.missileDefense > 0) {
+          layers.push({ key: "city:" + id, shots: c.buildings.missileDefense * SF.MISSILE_DEFENSE_SHOTS,
+            chance: SF.MISSILE_DEFENSE_CHANCE });
+        }
+      });
+      living().forEach(function (u) {
+        if (u.owner === foeSide && u.type === "destroyer" && !isCargo(u) && near.indexOf(u.at) !== -1) {
+          layers.push({ key: "ship:" + u.id, shots: SF.DESTROYER_MISSILE_SHOTS, chance: SF.DESTROYER_MISSILE_CHANCE });
+        }
+      });
+      var stopped = 0;
+      missiles.forEach(function () {
+        for (var i = 0; i < layers.length; i++) {
+          var l = layers[i];
+          if ((shotsUsed[l.key] || 0) >= l.shots) continue;
+          shotsUsed[l.key] = (shotsUsed[l.key] || 0) + 1;
+          if (rand() < l.chance) { stopped++; return; }
+        }
+      });
+      var landed = missiles.length - stopped;
+      var killed = [], wrecked = [];
+      var terrain = SF.terrainAt(state, target);
+      var sea = !isLand(target);
+      for (var m = 0; m < landed; m++) {
+        if (e.order.mode === "buildings") {
+          var c = state.cities[target];
+          if (!c || c.owner !== foeSide) continue;
+          var kinds = SF.BUILDING_ORDER.filter(function (k) { return c.buildings[k] > 0; });
+          if (kinds.length && rand() < SF.MISSILE_BUILDING) {
+            var k = kinds[Math.floor(rand() * kinds.length)];
+            c.buildings[k] -= 1;
+            wrecked.push(SF.BUILDINGS[k].name);
+          }
+        } else {
+          for (var h = 0; h < SF.MISSILE_HITS; h++) {
+            var targets = living().filter(function (u) {
+              return u.at === target && u.owner === foeSide && (sea ? isShip(u) : isGround(u));
+            });
+            if (!targets.length) break;
+            if (rand() < Math.max(0.05, SF.MISSILE_HIT_CHANCE - (SF.BOMBARD_TERRAIN[terrain] || 0))) {
+              var hit = targets[Math.floor(rand() * targets.length)];
+              killed.push(hit);
+              kill([hit]);
+            }
+          }
+        }
+      }
+      events.push({
+        type: "missile", owner: e.owner, from: e.order.from, at: target, mode: e.order.mode,
+        fired: missiles.length, stopped: stopped, killed: SF.describeUnits(killed), wrecked: wrecked
+      });
+    });
+
+    // 3. Artillery and destroyers fire.
     all.filter(function (e) { return e.order.kind === "bombard"; }).forEach(function (e) {
       var guns = unitsOf(e.order);
       if (!guns.length) return;
@@ -879,7 +973,7 @@
       });
     }
 
-    // 3. Transports load troops in the port they leave.
+    // 4. Transports load troops in the port they leave.
     var sails = all.filter(function (e) { return e.order.kind === "sail"; });
     sails.forEach(function (e) {
       var transports = unitsOf(e.order).filter(function (u) { return u.type === "transport"; });
@@ -891,7 +985,7 @@
       });
     });
 
-    // 4. Ships sail and fight. Cargo goes wherever its transport goes.
+    // 5. Ships sail and fight. Cargo goes wherever its transport goes.
     function moveShip(u, target) {
       u.at = target;
       living().forEach(function (c) { if (c.aboard === u.id) c.at = target; });
@@ -906,7 +1000,7 @@
       if (isCargo(c) && !isAir(c) && isLand(c.at)) c.aboard = null;
     });
 
-    // 5. Ground moves, landings, and boarding.
+    // 6. Ground moves, landings, and boarding.
     var groundEntries = [];
     sails.forEach(function (e) {
       if (!e.order.landAt) return;
@@ -976,7 +1070,7 @@
         to: where, carrier: !!e.order.carrier, ok: ok });
     });
 
-    // 6. Planes and docked ships in a city the enemy now holds are destroyed.
+    // 7. Planes and docked ships in a city the enemy now holds are destroyed.
     var lostByPlace = {};
     living().forEach(function (u) {
       if (!(isAir(u) || isNaval(u)) || !isLand(u.at)) return;
@@ -991,14 +1085,14 @@
       events.push({ type: "planesLost", owner: g.owner, at: g.at, what: SF.describeUnits(g.units) });
     });
 
-    // 7. Scout planes fly after the fighting, so they see where armies ended up.
+    // 8. Scout planes fly after the fighting, so they see where armies ended up.
     all.filter(function (e) { return e.order.kind === "scout"; }).forEach(function (e) {
       var plane = unitsOf(e.order)[0];
       if (!plane) return;
       var area = around(e.order.to, SF.SCOUT_RADIUS);
       var guns = living().filter(function (u) {
         return u.type === "antiAir" && u.owner !== e.owner && area.indexOf(u.at) !== -1 && !isCargo(u);
-      });
+      }).concat(batteryShots(1 - e.owner, area));
       // Enemy fighters patrolling over the area can catch it too.
       var catchers = fightersOver(1 - e.owner, e.order.to);
       var shot = guns.some(function () { return rand() < SF.SCOUT_AA_CHANCE; }) ||
@@ -1015,7 +1109,7 @@
 
     state.units = state.units.filter(function (u) { return alive[u.id]; });
 
-    // 8. Economy: cities change hands, production finishes, income comes in.
+    // 9. Economy: cities change hands, production finishes, income comes in.
     SF.updateCityOwners(state, events);
     SF.advanceProjects(state, events);
     SF.collectIncome(state, events);

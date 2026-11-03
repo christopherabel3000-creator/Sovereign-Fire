@@ -55,6 +55,8 @@ SF.UNIT_TYPES = {
   scoutPlane: { name: "scout plane", plural: "scout planes", air: true, attack: 0, defense: 1, loss: 0, range: 10 },
   fighter: { name: "fighter", plural: "fighters", air: true, attack: 6, defense: 6, loss: 2, range: 6 },
   bomber: { name: "bomber", plural: "bombers", air: true, attack: 1, defense: 2, loss: 1, range: 8 },
+  // Missiles are stored in the city that built them and used up when fired.
+  missile: { name: "missile", plural: "missiles", air: true, missile: true, attack: 0, defense: 0, loss: 0, range: 14 },
   // Ships move on ocean squares and dock in port cities you hold. Like
   // planes, they do not hold land squares.
   destroyer: { name: "destroyer", plural: "destroyers", naval: true, move: 4, attack: 5, defense: 5, loss: 3,
@@ -65,7 +67,7 @@ SF.UNIT_TYPES = {
   carrier: { name: "carrier", plural: "carriers", naval: true, move: 3, attack: 1, defense: 4, loss: 5, planes: 4 }
 };
 SF.UNIT_ORDER = ["infantry", "specialForces", "engineer", "tank", "artillery", "antiAir",
-  "destroyer", "submarine", "transport", "carrier", "fighter", "bomber", "scoutPlane"];
+  "destroyer", "submarine", "transport", "carrier", "fighter", "bomber", "scoutPlane", "missile"];
 
 // A unit gets this much extra attack and defense in a battle with a type it hunts.
 SF.HUNT_BONUS = 3;
@@ -94,6 +96,16 @@ SF.AIR_SUPPORT = 1;          // battle bonus for the side that holds the sky ove
 SF.BOMB_TROOPS = 0.5;        // chance per bomber to destroy one unit, before terrain
 SF.BOMB_BUILDING = 0.35;     // chance per bomber to destroy one building in a city
 SF.BOMB_BRIDGE = 0.5;        // chance per bomber to destroy a bridge
+SF.AIR_DEFENSE_SHOTS = 2;    // each air defense battery fires like 2 anti-aircraft guns over its city
+
+// Missiles
+SF.MISSILE_HITS = 2;         // each missile can destroy up to 2 units...
+SF.MISSILE_HIT_CHANCE = 0.6; // ...each with this chance, lowered by terrain
+SF.MISSILE_BUILDING = 0.6;   // chance a missile destroys one building in a city
+SF.MISSILE_DEFENSE_SHOTS = 2;    // missiles each battery can try to stop per turn
+SF.MISSILE_DEFENSE_CHANCE = 0.75;
+SF.DESTROYER_MISSILE_SHOTS = 1;  // destroyers guard squares within 1 of them
+SF.DESTROYER_MISSILE_CHANCE = 0.6;
 
 // Battles
 SF.BATTLE_ROUNDS = 3;

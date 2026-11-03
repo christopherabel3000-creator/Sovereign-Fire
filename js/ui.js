@@ -121,6 +121,7 @@
       else if (o.kind === "bomb") t[o.to] = "bomb";
       else if (o.kind === "rebase") t[o.to] = t[o.to] || "rebase";
       else if (o.kind === "repair") return;
+      else if (o.kind === "missile") t[o.to] = "missile";
       else t[o.to] = knownEnemy(o.to) ? "attack" : "move";
       if (o.landAt) t[o.landAt] = knownEnemy(o.landAt) ? "attack" : "landing";
     });
@@ -135,7 +136,8 @@
     landing: "your troops landing here",
     patrol: "your fighters patrolling here",
     bomb: "your bombing target",
-    rebase: "your planes moving here"
+    rebase: "your planes moving here",
+    missile: "your missile target"
   };
 
   function squareLabel(sq, targets) {
@@ -219,6 +221,7 @@
     if (o.kind === "bomb") return "bombing " + ({ troops: "troops", buildings: "buildings", bridge: "the bridge" })[o.mode] + " at " + o.to;
     if (o.kind === "rebase") return (o.carrier ? "landing on the carrier at " : "moving to the base at ") + o.to;
     if (o.kind === "repair") return "rebuilding the bridge";
+    if (o.kind === "missile") return "firing at " + (o.mode === "buildings" ? "buildings in " : "") + o.to;
     if (o.kind === "sail") {
       var text = (knownEnemy(o.to) ? "attacking " : "sailing to ") + o.to;
       var loading = state.units.filter(function (u) { return (o.cargoIds || []).indexOf(u.id) !== -1; });
@@ -308,7 +311,8 @@
     renderScoutForm(box, sq, byType.scoutPlane || []);
     renderPatrolForm(box, sq, byType.fighter || []);
     renderBombForm(box, sq, byType.bomber || []);
-    renderRebaseForm(box, sq, waitingNow.filter(SF.isAir));
+    renderRebaseForm(box, sq, waitingNow.filter(function (u) { return SF.isAir(u) && u.type !== "missile"; }));
+    renderMissileForm(box, sq, byType.missile || []);
     renderRepairForm(box, sq, (byType.engineer || []).filter(function (u) { return !SF.isCargo(u); }));
   }
 
@@ -469,6 +473,45 @@
       if (!group.length || !c) return;
       SF.addRebase(state, me(), group.map(function (u) { return u.id; }), c.id, c.carrier);
       afterOrder("Ordered " + SF.describeUnits(group) + " to move to " + (c.carrier ? "the carrier at " : "") + c.id + ".");
+    });
+    box.appendChild(form);
+  }
+
+  function renderMissileForm(box, sq, missiles) {
+    if (!missiles.length) return;
+    var range = SF.UNIT_TYPES.missile.range;
+    box.appendChild(el("h3", "Missile strike"));
+    var form = el("form", undefined, "order-form");
+    form.appendChild(el("p", "Missiles can hit any square within " + range + " squares. If you cannot see the target, you will not learn what they hit. Missile defenses and destroyers near the target can shoot them down, so firing several at once can overwhelm them."));
+    var count = countPicker(form, "Missiles to fire, " + missiles.length + " here", missiles.length);
+    var input = squareInput(form, "Target square");
+    var mLabel = el("label", "Aim at");
+    var mode = document.createElement("select");
+    [["units", "Units on the square"], ["buildings", "Buildings in an enemy city"]].forEach(function (m) {
+      var o = el("option", m[1]);
+      o.value = m[0];
+      mode.appendChild(o);
+    });
+    mLabel.appendChild(mode);
+    form.appendChild(mLabel);
+    var error = formError(form);
+    submitButton(form, "Launch missiles");
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var v = input.value.trim().toUpperCase().replace(/\s+/g, "");
+      if (!SF.sq(v)) { error.textContent = "Not a square. Use a letter A to P and a number 1 to 16."; return; }
+      if (SF.distance(sq.id, v) > range) {
+        error.textContent = v + " is " + SF.distance(sq.id, v) + " squares away. The limit is " + range + ".";
+        return;
+      }
+      var c = state.cities[v];
+      if (mode.value === "buildings" && !(c && c.owner === foe())) {
+        error.textContent = v + " is not an enemy city.";
+        return;
+      }
+      var use = missiles.slice(0, parseInt(count.value, 10));
+      SF.addMissile(state, me(), use.map(function (u) { return u.id; }), v, mode.value);
+      afterOrder("Ordered " + SF.describeUnits(use) + " fired at " + (mode.value === "buildings" ? "buildings in " : "") + v + ".");
     });
     box.appendChild(form);
   }
@@ -1068,6 +1111,8 @@
           " patrolled over " + e.at + ", but the sky there was contested.");
       case "bombing":
         return bombingText(e, v);
+      case "missile":
+        return missileText(e, v);
       case "rebase":
         if (!mine) return null;
         return e.ok ? "Your " + e.what + " moved to " + (e.carrier ? "the carrier at " : "") + e.to + "." :
@@ -1108,6 +1153,27 @@
         return "You destroyed enemy " + e.what + " at " + e.at + " when you took the city.";
     }
     return null;
+  }
+
+  function missileText(e, v) {
+    var n = e.fired, many = n === 1 ? "missile" : "missiles";
+    var where = (e.mode === "buildings" ? "buildings in " : "") + e.at;
+    var stopped = e.stopped ? (e.stopped === n ? (n === 1 ? "It was shot down." : "All of them were shot down.") :
+      e.stopped + " of them " + (e.stopped === 1 ? "was" : "were") + " shot down.") : "";
+    if (e.owner === v) {
+      // Results are only known for squares you can see, and enemy cities.
+      if (!vis.wide[e.at] && e.mode !== "buildings") {
+        return "You fired " + n + " " + many + " from " + e.from + " at " + e.at + ". You cannot see what they hit.";
+      }
+      var s = "You fired " + n + " " + many + " from " + e.from + " at " + where + ". " + (stopped ? stopped + " " : "");
+      if (e.stopped === n) return s.trim();
+      if (e.mode === "buildings") return s + (e.wrecked.length ? "They destroyed " + e.wrecked.map(SF.withArticle).join(" and ") + "." : "No buildings were hit.");
+      return s + (e.killed ? "They destroyed " + e.killed + "." : "They hit nothing.");
+    }
+    if (!e.stopped && !e.killed && !e.wrecked.length && !vis.wide[e.at]) return null;
+    var t = n + " enemy " + many + " struck " + where + ". " + (e.stopped ? "Your defenses shot down " + e.stopped + ". " : "");
+    if (e.mode === "buildings") return t + (e.wrecked.length ? "They destroyed " + e.wrecked.map(SF.withArticle).join(" and ") + " in your city." : "No buildings were hit.");
+    return t + (e.killed ? "They destroyed your " + e.killed + "." : "They hit nothing.");
   }
 
   function bombingText(e, v) {
@@ -1187,13 +1253,16 @@
     box.innerHTML = "";
     SF.citiesOf(state, me()).forEach(function (id) {
       var info = SF.cityInfo(id);
-      box.appendChild(el("h3", id + ", " + tName(SF.sq(id)) + ", room for " + info.slots +
+      var free = SF.freeCount(id);
+      var room = info.slots - free;
+      box.appendChild(el("h3", id + ", " + tName(SF.sq(id)) + ", room for " + room +
+        (free ? ", comes with " + buildingsText(SF.freeBuildings(id)) : "") +
         ", manpower " + info.pop + " a turn"));
       var wrap = el("div", undefined, "order-form");
       SF.BUILDING_ORDER.forEach(function (k) {
         var label = el("label", capitalize(SF.BUILDINGS[k].plural) + " at " + id);
         var sel = document.createElement("select");
-        for (var i = 0; i <= info.slots; i++) {
+        for (var i = 0; i <= room; i++) {
           var o = el("option", String(i));
           o.value = String(i);
           sel.appendChild(o);
@@ -1204,7 +1273,7 @@
           plan[id][k] = parseInt(sel.value, 10);
           renderPlanLeft();
           var used = planUsed(id);
-          $("plan-error").textContent = used > info.slots ? id + " only has room for " + info.slots + " buildings." : "";
+          $("plan-error").textContent = used > room ? id + " only has room for " + room + " buildings." : "";
         });
         label.appendChild(sel);
         wrap.appendChild(label);

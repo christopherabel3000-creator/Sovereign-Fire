@@ -21,9 +21,26 @@
     refinery: { name: "refinery", plural: "refineries", job: "refinery", cost: 12, turns: 3 },
     lab: { name: "lab", plural: "labs", job: "lab", cost: 12, turns: 3 },
     airfield: { name: "airfield", plural: "airfields", cost: 15, turns: 3 },
-    port: { name: "port", plural: "ports", cost: 12, turns: 3, coastal: true }
+    port: { name: "port", plural: "ports", cost: 12, turns: 3, coastal: true },
+    airDefense: { name: "air defense battery", plural: "air defense batteries", cost: 10, turns: 2 },
+    missileDefense: { name: "missile defense battery", plural: "missile defense batteries", cost: 14, turns: 3 }
   };
-  SF.BUILDING_ORDER = ["factory", "refinery", "lab", "airfield", "port"];
+  SF.BUILDING_ORDER = ["factory", "refinery", "lab", "airfield", "port", "airDefense", "missileDefense"];
+
+  // Buildings every capital starts with, on top of the starting plan. They
+  // still take up room in the city.
+  SF.FREE_BUILDINGS = { F2: { missileDefense: 1 } };
+  SF.freeBuildings = function (id) {
+    var sq = SF.sq(id);
+    var northId = sq.home === 0 ? id : SF.mirrorId(id);
+    return SF.FREE_BUILDINGS[northId] || {};
+  };
+  function freeCount(id) {
+    var f = SF.freeBuildings(id), n = 0;
+    Object.keys(f).forEach(function (k) { n += f[k]; });
+    return n;
+  }
+  SF.freeCount = freeCount;
 
   // "a factory", "an airfield"
   SF.withArticle = function (word) { return (/^[aeiou]/i.test(word) ? "an " : "a ") + word; };
@@ -51,6 +68,7 @@
     scoutPlane: { industry: 8, recruits: 1, gasoline: 2, turns: 2, needs: "airfield" },
     fighter: { industry: 10, recruits: 1, gasoline: 3, turns: 2, needs: "airfield" },
     bomber: { industry: 14, recruits: 1, gasoline: 4, turns: 2, needs: "airfield" },
+    missile: { industry: 15, recruits: 0, gasoline: 3, turns: 2, needs: "factory" },
     destroyer: { industry: 12, recruits: 2, gasoline: 4, turns: 2, needs: "port" },
     submarine: { industry: 12, recruits: 2, gasoline: 4, turns: 2, needs: "port" },
     transport: { industry: 8, recruits: 1, gasoline: 3, turns: 2, needs: "port" },
@@ -119,9 +137,9 @@
     Object.keys(plan).forEach(function (id) {
       var sq = SF.sq(id);
       if (!sq || sq.terrain.key !== "city" || sq.home !== owner) { bad = "Bad city " + id; return; }
-      var used = 0;
+      var used = freeCount(id);
       SF.BUILDING_ORDER.forEach(function (k) { used += plan[id][k] || 0; });
-      if (used > homeInfo(id).slots) bad = id + " only has room for " + homeInfo(id).slots + " buildings.";
+      if (used > homeInfo(id).slots) bad = id + " only has room for " + (homeInfo(id).slots - freeCount(id)) + " more buildings.";
       if ((plan[id].port || 0) > 0 && !SF.isCoastal(sq)) bad = "Ports can only go in coastal cities. " + id + " is inland.";
     });
     return bad;
@@ -140,8 +158,11 @@
   SF.applyPlan = function (state, owner, plan) {
     var problem = SF.planProblem(owner, plan);
     if (problem) throw new Error(problem);
-    Object.keys(plan).forEach(function (id) {
-      SF.BUILDING_ORDER.forEach(function (k) { state.cities[id].buildings[k] = plan[id][k] || 0; });
+    SF.citiesOf(state, owner).forEach(function (id) {
+      var free = SF.freeBuildings(id);
+      SF.BUILDING_ORDER.forEach(function (k) {
+        state.cities[id].buildings[k] = ((plan[id] && plan[id][k]) || 0) + (free[k] || 0);
+      });
     });
     state.setupDone[owner] = true;
   };

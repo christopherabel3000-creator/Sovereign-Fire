@@ -296,6 +296,22 @@ These numbers are starting points for playtesting.
 
 **Carriers.** Planes on a carrier move with it and fly missions from wherever it is. A carrier holds up to 4 planes.
 
+## Missiles, first version
+
+These numbers are starting points for playtesting.
+
+**Missiles.** Missiles are built in a city with a factory and stored there. They can be fired at any square up to 14 squares away, seen or unseen, and are used up when fired. That reaches capital to capital.
+- **At units:** each missile that gets through can destroy up to 2 units on the square, each with a 60% chance, lowered by terrain like artillery. At sea, it hits ships.
+- **At an enemy city's buildings:** each missile that gets through has a 60% chance to destroy one building.
+- You only learn what a missile hit if you can see the target square, or if you aimed at an enemy city's buildings.
+
+**Missile defense.** Each missile is engaged in turn by every defense near its target until it is shot down or nothing has shots left.
+- A missile defense battery protects its city and the squares around it. It gets 2 shots a turn, each 75% to stop a missile.
+- A destroyer protects the squares within 1 of it. It gets 1 shot a turn, 60% to stop a missile.
+- Firing several missiles at once can overwhelm the defenses. In testing, a capital with its free battery stopped about 1.5 missiles a turn on average, so a salvo of 5 destroyed about 2 buildings.
+
+**Air defense batteries.** A city building that fires like 2 anti-aircraft guns at bombers attacking that city, and at scout planes flying over it.
+
 ## Economy, first version
 
 These numbers are starting points for playtesting.
@@ -331,8 +347,11 @@ These numbers are starting points for playtesting.
 - Submarine: 12 industry, 2 recruits, 4 gasoline, 2 turns. Needs a port.
 - Transport: 8 industry, 1 recruit, 3 gasoline, 2 turns. Needs a port.
 - Carrier: 24 industry, 3 recruits, 8 gasoline, 4 turns. Needs a port.
+- Missile: 15 industry, 3 gasoline, 2 turns. Needs a factory.
 
-**Buildings.** Factories, refineries, labs, and ports cost 12 industry. Airfields cost 15. Each takes 3 turns. Ports can only go in coastal cities.
+**Buildings.** Factories, refineries, labs, and ports cost 12 industry. Airfields cost 15. Each takes 3 turns. Ports can only go in coastal cities. Air defense batteries cost 10 industry and take 2 turns. Missile defense batteries cost 14 industry and take 3 turns.
+
+**Free capital defense.** Each capital starts with 1 missile defense battery, on top of the starting plan. It uses one of the capital's 5 building spaces.
 
 **Canceling.** Units and buildings can be canceled for a full refund in the turn they were ordered.
 
@@ -367,7 +386,7 @@ Each step ends with something playable to test on iPhone and computer.
 6. **Sea and air:** built in two parts.
    - **6a, sea:** ports, ships, naval battles, transports, invasions, and shore bombardment. (Built.)
    - **6b, air:** fighters, bombers, carriers' planes, and air control. (Built.)
-7. **Missiles and defenses.**
+7. **Missiles and defenses.** (Built.)
 8. **Science and research.**
 9. **Morale, government types, and victory conditions.**
 10. **Nuclear weapons.**
