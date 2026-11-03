@@ -9,6 +9,7 @@
       desc: "Science up 25% and industry up 10%. Losses, bombing, and lost cities hurt morale 50% more. Once per game, when the capital is threatened or morale is below 40, you can rally the nation for 20 morale.",
       income: { science: 1.25, industry: 1.1 },
       lossRate: 1.5,
+      nukeRate: 1,
       ability: "rally"
     },
     authoritarian: {
@@ -16,6 +17,7 @@
       desc: "Losses, bombing, and lost cities hurt morale 40% less. Science down 25%. Every 8 turns, you can order an emergency draft for 8 recruits, at a cost of 3 morale.",
       income: { science: 0.75 },
       lossRate: 0.6,
+      nukeRate: 0.5,
       ability: "draft"
     },
     military: {
@@ -23,6 +25,7 @@
       desc: "Units cost 20% less industry and take 1 less turn to build, but never less than 1. Industry and science down 20%. Morale falls 2 a turn if you have not won a battle in the last 3 turns. Once per game, mass conscription gives 12 recruits and 4 infantry at your capital.",
       income: { industry: 0.8, science: 0.8 },
       lossRate: 1,
+      nukeRate: 0.75,
       unitDiscount: 0.2,
       fasterBuild: 1,
       restless: true,
@@ -34,6 +37,7 @@
       income: { science: 1.5 },
       manpower: 0.8,
       lossRate: 1,
+      nukeRate: 1,
       ability: "breakthrough"
     }
   };
@@ -206,16 +210,23 @@
           else good(capital ? M.capitalTaken : M.cityTaken, capital ? "the enemy capital taken" : "a city captured");
         }
       });
-      // Nuclear weapons: the first side to launch pays heavily, a side
-      // striking back after being hit first does not.
-      if (tally.launched && tally.launched[owner]) {
-        var cost = 0;
-        for (var i = 0; i < tally.launched[owner]; i++) {
-          cost += i === 0 ? firstCost[owner] : (firstCost[owner] ? SF.NUKE.laterUse : 0);
-        }
-        if (cost) { down += cost; reasons.push(firstCost[owner] === SF.NUKE.firstUse ? "using nuclear weapons first" : "using nuclear weapons"); }
+      // Nuclear weapons. Morale lost to them is scaled by government:
+      // half for an Authoritarian State, three quarters for a Military State.
+      var nukeRate = g.nukeRate === undefined ? 1 : g.nukeRate;
+      if (tally.nuked && tally.nuked[owner]) {
+        down += tally.nuked[owner] * SF.NUKE.struck * nukeRate;
+        reasons.push("nuclear attack");
       }
-      bad(tally.nuked ? tally.nuked[owner] * SF.NUKE.struck : 0, "nuclear attack");
+      // The first side to launch pays heavily, and a side striking back after
+      // being hit first does not. Launching never takes your own morale below 15.
+      var launchCost = 0, launchWhy = null;
+      if (tally.launched && tally.launched[owner]) {
+        for (var i = 0; i < tally.launched[owner]; i++) {
+          launchCost += i === 0 ? firstCost[owner] : (firstCost[owner] ? SF.NUKE.laterUse : 0);
+        }
+        launchCost *= nukeRate;
+        if (launchCost) launchWhy = firstCost[owner] === SF.NUKE.firstUse ? "using nuclear weapons first" : "using nuclear weapons";
+      }
       var blockaded = SF.citiesOf(state, owner).filter(function (id) {
         return state.cities[id].buildings.port > 0 && SF.blockaded(state, id);
       }).length;
@@ -231,7 +242,14 @@
       var change = Math.round(up - down);
       var before = n.morale;
       n.morale = Math.max(0, Math.min(100, n.morale + change));
-      if (n.morale !== before) {
+      if (launchCost) {
+        var floor = SF.NUKE.launchFloor;
+        var room = Math.max(0, n.morale - floor);
+        var paid = Math.min(Math.round(launchCost), room);
+        n.morale -= paid;
+        reasons.push(paid ? launchWhy : launchWhy + ", which cannot take morale below " + floor);
+      }
+      if (n.morale !== before || launchCost) {
         events.push({ type: "morale", owner: owner, from: before, to: n.morale, reasons: reasons });
       }
     });

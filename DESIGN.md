@@ -195,7 +195,9 @@ Missiles from cities and submarines face the same missile defense as any missile
 - The first side to launch loses 30 morale, even if the weapon is shot down. Each later launch by that side costs 10 more.
 - A side that strikes back after the enemy launched first loses no morale for its own launches.
 - If both sides launch first in the same turn, both pay the first-use cost.
-- The side hit loses 10 morale for each detonation, plus the usual morale for its losses, made worse or softer by its government.
+- The side hit loses 10 morale for each detonation, plus the usual morale for its losses.
+- Government changes all nuclear morale, both for launching and for being hit: an Authoritarian State loses half as much, and a Military State three quarters as much. Democracies and Scientific Republics lose the full amount.
+- Launching never takes your own morale below 15. A nation on the brink can still strike without surrendering for it, though losses from the enemy can still push it lower.
 
 ## Victory conditions
 

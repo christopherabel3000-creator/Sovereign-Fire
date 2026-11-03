@@ -118,7 +118,8 @@ SF.NUKE = {
   subRange: 8,         // squares a submarine can fire a nuclear missile
   firstUse: 30,        // morale lost by the first side to launch
   laterUse: 10,        // morale lost for each later launch by that side
-  struck: 10           // morale lost by the side hit, for each detonation
+  struck: 10,          // morale lost by the side hit, for each detonation
+  launchFloor: 15      // launching never takes your own morale below this
 };
 
 // Battles

@@ -547,7 +547,9 @@
     if (!ways.length) return;
     box.appendChild(el("h3", "Nuclear strike"));
     var form = el("form", undefined, "order-form");
-    var cost = SF.nukeMoraleCost(state, me());
+    var nukeRate = SF.gov(state, me()).nukeRate;
+    var cost = Math.round(SF.nukeMoraleCost(state, me()) * (nukeRate === undefined ? 1 : nukeRate));
+    var floorNote = " Launching never takes your morale below " + SF.NUKE.launchFloor + ".";
     var first = state.firstNuke;
     var warning = first === null || first === undefined ?
       "No one has used nuclear weapons yet. Launching first costs your nation " + cost + " morale, even if it is shot down." :
@@ -555,7 +557,7 @@
       "The enemy used nuclear weapons first. Striking back costs your nation no morale.";
     form.appendChild(el("p", "You have " + state.econ[me()].warheads + " nuclear " +
       (state.econ[me()].warheads === 1 ? "warhead" : "warheads") + ". " + warning +
-      " Everything on the target square is destroyed, and the 8 squares around it are badly damaged. The target stays radioactive for " +
+      floorNote + " Everything on the target square is destroyed, and the 8 squares around it are badly damaged. The target stays radioactive for " +
       SF.NUKE.fallout + " turns."));
     var mLabel = el("label", "Deliver by");
     var method = document.createElement("select");
@@ -1205,6 +1207,7 @@
         return mine ? e.text : null;
       case "morale":
         if (!mine) return null;
+        if (e.to === e.from) return "Morale held at " + e.to + (e.reasons.length ? ": " + e.reasons.join(", ") : "") + ".";
         return "Morale " + (e.to > e.from ? "rose" : "fell") + " from " + e.from + " to " + e.to +
           (e.reasons.length ? ": " + e.reasons.join(", ") : "") + ".";
       case "gameOver":
