@@ -114,6 +114,86 @@
     <h2>Game</h2>
     <p><button class="act" type="button" id="quit-btn">Start a new game</button></p>
   </div>
+
+  <section id="help" class="help">
+    <h2>How to play</h2>
+    <details>
+      <summary>Open the guide</summary>
+
+      <h3>The goal</h3>
+      <p>Two nations are at war. You win when the enemy surrenders because its morale reaches 0, when it holds no cities, or when it has no units and no way to build more.</p>
+
+      <h3>How a turn works</h3>
+      <p>Both sides give orders at the same time, in secret. When you are done, press Lock in orders. Once both sides have locked in, the turn plays out all at once, and you get a report of what happened. Units without orders stay where they are.</p>
+      <p>In pass and play, a Pass the phone screen hides your orders before the other player takes their turn. Each player only ever sees their own side.</p>
+      <p>The game saves itself after every change. Continue saved game on the first screen picks up where you left off.</p>
+
+      <h3>Before the war</h3>
+      <p>Choose a government, a nation name, and 10 starting buildings. Your opponent sees your government but not your buildings. Factories make industry, refineries make gasoline, and labs make science. Airfields are needed for planes and ports for ships.</p>
+
+      <h3>The map</h3>
+      <p>The map is a 16 by 16 grid, columns A to P and rows 1 to 16. The first player holds the north, rows 1 to 8, and the second holds the south. The two share a land border on the east side, and an ocean separates them in the west.</p>
+      <p>Each square reads like this: its name, terrain, whose land it is, any units on it, and whether it is hidden. Selecting a square opens its details and orders under the Selected square heading, just below the map.</p>
+      <p>Ways to get around:</p>
+      <ul>
+        <li>Go to square: type a square like L3 to jump to it.</li>
+        <li>Next units without orders: jumps to your next square with units still waiting.</li>
+        <li>Your cities and Enemy cities: lists of buttons that jump to each city.</li>
+        <li>On a computer, the arrow keys move between squares on the map.</li>
+      </ul>
+
+      <h3>Moving and attacking</h3>
+      <p>Select a square with your units, choose how many of each type to send, and pick a destination. Squares holding enemy units you can see are attacks, and show your chance to win before you commit. Nothing is ever certain.</p>
+      <ul>
+        <li>Tanks move 3 squares a turn, and most other units move 2. Forest and rivers slow units down, and mountains slow them a lot.</li>
+        <li>Tanks are strong on plains and weak attacking into forest, cities, and mountains. Defenders get big bonuses in cities and mountains.</li>
+        <li>Tanks can only cross rivers at bridges. Bombers can destroy bridges, and engineers rebuild them.</li>
+        <li>You only take a square by destroying every defender. Otherwise your attackers fall back.</li>
+        <li>Artillery can stay put and fire at enemies up to 2 squares away before the fighting starts.</li>
+      </ul>
+
+      <h3>Seeing the enemy</h3>
+      <p>You see your own land, the squares around your units and cities, and anything your scout planes or satellites watched last turn. Everything else is hidden. Special forces and submarines are only spotted up close. Moving onto a hidden square with enemies on it starts a surprise battle.</p>
+
+      <h3>Your nation</h3>
+      <p>The Your nation section shows your morale, your stockpile, and your income each turn.</p>
+      <ul>
+        <li>Workforce: assign your manpower to factories, refineries, labs, and recruits. Each building can use 3 workers. The assignment stays until you change it.</li>
+        <li>Building: select one of your cities to build units or new buildings. Units cost industry and recruits, and ships and planes also cost gasoline once.</li>
+        <li>Research: add technologies to your research queue. Science from labs pays for them in order. Science is saved, never lost, even when the queue is empty.</li>
+        <li>Your government's special ability is a button here, and says when it is ready.</li>
+        <li>Captured enemy cities produce for you right away, at 25% for their first 3 turns.</li>
+      </ul>
+
+      <h3>The sea</h3>
+      <p>Ships are built in port cities and move on ocean squares. Destroyers hunt submarines, submarines hunt transports and carriers, and carriers hold planes.</p>
+      <p>To invade, load troops onto a transport in port as part of its sea order, sail it next to the enemy coast, and choose Land troops at. Landing troops fight at a disadvantage, so soften the target first with destroyers' shore bombardment, bombers, or missiles.</p>
+
+      <h3>The air</h3>
+      <p>Planes are based in airfield cities or on carriers. Each turn, each plane flies one mission and comes home.</p>
+      <ul>
+        <li>Fighter patrol: holds the sky over a 3 by 3 area. The side holding the sky over a battle gets a bonus.</li>
+        <li>Bombing run: hits visible troops, an enemy city's buildings, or a bridge. Enemy fighters and anti-aircraft guns can shoot bombers down. Fighters patrolling over the same square act as escorts.</li>
+        <li>Scout mission: reveals a 5 by 5 area for your next turn.</li>
+        <li>Move planes to a new base: another airfield city, or a carrier.</li>
+      </ul>
+
+      <h3>Missiles and nuclear weapons</h3>
+      <p>Missiles hit any square in range, seen or not, but you only learn the result if you can see the target. Missile defense batteries and destroyers shoot them down, so firing several at once can get through.</p>
+      <p>Nuclear weapons need late research and a very expensive warhead. The first nation to launch one loses a lot of morale, but a nation striking back after being hit first does not. Launching never takes your own morale below 15.</p>
+
+      <h3>Morale</h3>
+      <p>Morale starts at 100. It falls when you lose units, cities, and buildings, when your cities are bombed, and when your ports are blockaded. It rises when you win battles and capture cities. At 0, your nation surrenders. Your government changes how hard bad news hits.</p>
+
+      <h3>Tips</h3>
+      <ul>
+        <li>Cities are hard to take. Bring artillery, bombers, or more troops than you think you need.</li>
+        <li>Scout before you attack, so the odds you see include everything that is there.</li>
+        <li>Keep something in your research queue. A side that invests in science and survives the early war pulls ahead.</li>
+        <li>Guard your capital. Losing it costs 20 morale.</li>
+      </ul>
+    </details>
+  </section>
 </main>
 
 <script src="js/data.js"></script>

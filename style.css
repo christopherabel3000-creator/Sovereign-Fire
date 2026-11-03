@@ -119,3 +119,9 @@ ul.plain li { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   table.map th { font-size: 0.6rem; padding: 0 1px; }
   main { padding: 16px 8px; }
 }
+
+.help { margin-top: 32px; }
+.help details { background: var(--panel); border-radius: 8px; padding: 12px 16px; }
+.help summary { cursor: pointer; font-weight: 700; min-height: 44px; display: flex; align-items: center; }
+.help summary:focus-visible { outline: 3px solid var(--focus); }
+.help ul { padding-left: 20px; }
