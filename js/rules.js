@@ -7,8 +7,9 @@
       version: 1,
       mode: mode,          // "computer" or "hotseat"
       turn: 1,
-      phase: "orders",     // "orders" or "handoff"
-      current: 0,          // whose orders are being entered
+      phase: "setup",      // "setup", "orders" or "handoff"
+      afterHandoff: null,  // the phase that follows a handoff
+      current: 0,          // whose setup or orders are being entered
       nextUnitId: 1,
       units: [],
       orders: [[], []],
@@ -27,6 +28,9 @@
         });
       });
     });
+    SF.initEconomy(state);
+    // The computer picks its starting buildings straight away.
+    if (mode === "computer") SF.applyPlan(state, 1, SF.defaultPlan(1));
     return state;
   };
 
@@ -96,7 +100,9 @@
     // squares around them. Neither reveals special forces.
     SF.allSquares().forEach(function (sq) {
       if (sq.home === owner) wide[sq.id] = true;
-      if (sq.terrain.key === "city" && sq.home === owner && SF.occupant(state, sq.id) !== 1 - owner) {
+      var held = state.cities ? state.cities[sq.id] && state.cities[sq.id].owner === owner :
+        sq.terrain.key === "city" && sq.home === owner;
+      if (held && SF.occupant(state, sq.id) !== 1 - owner) {
         around(sq.id, 1).forEach(function (id) { wide[id] = true; });
       }
     });
@@ -230,12 +236,17 @@
     if (units[0].type !== "scoutPlane") throw new Error("Only scout planes scout");
     var from = units[0].at;
     if (!SF.canScout(from, target)) throw new Error("Out of range");
-    var order = { id: state.nextOrderId++, kind: "scout", unitIds: [planeId], from: from, to: target };
+    if (state.econ[owner].gasoline < SF.SCOUT_GAS) throw new Error("Not enough gasoline");
+    state.econ[owner].gasoline -= SF.SCOUT_GAS;
+    var order = { id: state.nextOrderId++, kind: "scout", unitIds: [planeId], from: from, to: target, gas: SF.SCOUT_GAS };
     state.orders[owner].push(order);
     return order;
   };
 
   SF.cancelOrder = function (state, owner, orderId) {
+    state.orders[owner].forEach(function (o) {
+      if (o.id === orderId && o.gas) state.econ[owner].gasoline += o.gas;
+    });
     state.orders[owner] = state.orders[owner].filter(function (o) { return o.id !== orderId; });
   };
 
@@ -322,6 +333,7 @@
   // The computer opponent. For now it only defends, so it gives no orders.
   SF.computerOrders = function (state) {
     state.orders[1] = [];
+    SF.computerEconomy(state);
   };
 
   // ---------- Turn resolution ----------
@@ -518,6 +530,12 @@
     });
 
     state.units = state.units.filter(function (u) { return alive[u.id]; });
+
+    // 5. Economy: cities change hands, production finishes, income comes in.
+    SF.updateCityOwners(state, events);
+    SF.advanceProjects(state, events);
+    SF.collectIncome(state, events);
+
     state.report = { turn: state.turn, mode: state.mode, events: events };
     state.orders = [[], []];
     state.turn += 1;

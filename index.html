@@ -20,6 +20,19 @@
     </ul>
   </section>
 
+  <section id="plan" hidden>
+    <h2 id="plan-heading" tabindex="-1"></h2>
+    <p>Choose your starting buildings. Your opponent will not see them.</p>
+    <p>Factories make industry, refineries make gasoline, and labs make science. Each one can use up to 3 workers. Airfields let a city build planes. Tanks and artillery need a factory in the city that builds them.</p>
+    <p id="plan-left" aria-live="polite"></p>
+    <div id="plan-cities"></div>
+    <p id="plan-error" role="alert"></p>
+    <div class="row">
+      <button class="act" type="button" id="plan-default">Reset to the balanced plan</button>
+      <button class="act primary" type="button" id="plan-done">Confirm starting buildings</button>
+    </div>
+  </section>
+
   <section id="handoff" hidden>
     <h2 id="handoff-heading" tabindex="-1"></h2>
     <div id="handoff-report"></div>
@@ -43,6 +56,9 @@
 
     <h2 id="selected-heading" tabindex="-1">Selected square</h2>
     <div class="panel" id="details"><p>No square selected yet.</p></div>
+
+    <h2 id="nation-heading" tabindex="-1">Your nation</h2>
+    <div id="nation"></div>
 
     <h2 id="orders-heading" tabindex="-1">Your orders</h2>
     <div id="orders"></div>
@@ -73,6 +89,7 @@
 <script src="js/data.js"></script>
 <script src="js/map.js"></script>
 <script src="js/rules.js"></script>
+<script src="js/economy.js"></script>
 <script src="js/ui.js"></script>
 </body>
 </html>

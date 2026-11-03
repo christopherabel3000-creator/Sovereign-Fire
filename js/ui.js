@@ -5,7 +5,7 @@
   "use strict";
 
   var SAVE_KEY = "sovereignFire.save";
-  var SAVE_VERSION = 2;
+  var SAVE_VERSION = 3;
   var state = null;
   var selected = null;     // id of the selected square
   var buttons = {};        // map square buttons by id
@@ -56,7 +56,7 @@
   }
 
   function show(which) {
-    ["setup", "handoff", "game"].forEach(function (id) { $(id).hidden = id !== which; });
+    ["setup", "plan", "handoff", "game"].forEach(function (id) { $(id).hidden = id !== which; });
   }
 
   // ---------- Map ----------
@@ -257,10 +257,110 @@
     var waitingNow = unorderedAt(sq.id);
     var byType = {};
     waitingNow.forEach(function (u) { (byType[u.type] = byType[u.type] || []).push(u); });
+    var city = state.cities[sq.id];
+    if (city && city.owner === me()) renderCityPanel(box, sq);
     var ground = waitingNow.filter(function (u) { return !SF.isAir(u); });
     if (ground.length) renderOrderForm(box, sq, ground);
     renderBombardForm(box, sq, byType.artillery || []);
     renderScoutForm(box, sq, byType.scoutPlane || []);
+  }
+
+  function buildingsText(b) {
+    var parts = [];
+    SF.BUILDING_ORDER.forEach(function (k) {
+      if (b[k]) parts.push(b[k] + " " + (b[k] === 1 ? SF.BUILDINGS[k].name : SF.BUILDINGS[k].plural));
+    });
+    return parts.length ? parts.join(", ") : "none";
+  }
+
+  function renderCityPanel(box, sq) {
+    var id = sq.id, c = state.cities[id], info = SF.cityInfo(id);
+    var rate = SF.cityRate(state, id);
+    box.appendChild(el("h3", "Your city"));
+    var room = info.slots - SF.slotsUsed(state, id);
+    box.appendChild(el("p", "Manpower " + Math.floor(info.pop * rate) + " a turn. Buildings: " +
+      buildingsText(c.buildings) + ". Room for " + room + " more."));
+    if (rate < 1) {
+      box.appendChild(el("p", "Recently captured. Producing at " + Math.round(rate * 100) +
+        "% until turn " + (c.captured + SF.CAPTURE_TURNS) + "."));
+    }
+    var here = state.projects.filter(function (p) { return p.city === id && p.owner === me(); });
+    if (here.length) {
+      var ul = el("ul", undefined, "plain");
+      here.forEach(function (p) {
+        var li = el("li");
+        li.appendChild(el("span", projectText(p) + "."));
+        if (SF.canCancelProject(state, p)) li.appendChild(cancelProjectButton(p, "selected-heading"));
+        ul.appendChild(li);
+      });
+      box.appendChild(ul);
+    }
+
+    // Build a unit.
+    box.appendChild(el("h3", "Build a unit"));
+    var uf = el("form", undefined, "order-form");
+    var ul2 = el("label", "Unit");
+    var usel = document.createElement("select");
+    Object.keys(SF.UNIT_COST).forEach(function (type) {
+      var cost = SF.UNIT_COST[type];
+      var problem = SF.unitProblem(state, me(), id, type);
+      var text = capitalize(SF.UNIT_TYPES[type].name) + ", " + cost.industry + " industry, " +
+        cost.recruits + (cost.recruits === 1 ? " recruit" : " recruits") + ", " +
+        cost.turns + (cost.turns === 1 ? " turn" : " turns");
+      if (problem) text += ". " + problem;
+      var o = el("option", text);
+      o.value = type;
+      usel.appendChild(o);
+    });
+    ul2.appendChild(usel);
+    uf.appendChild(ul2);
+    var uerr = el("p");
+    uerr.setAttribute("role", "alert");
+    uf.appendChild(uerr);
+    var ub = el("button", "Build unit", "act primary");
+    ub.type = "submit";
+    uf.appendChild(ub);
+    uf.addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      var problem = SF.unitProblem(state, me(), id, usel.value);
+      if (problem) { uerr.textContent = problem; return; }
+      var p = SF.startUnit(state, me(), id, usel.value);
+      afterOrder("Building " + SF.UNIT_TYPES[p.type].name + " at " + id + ", ready in " + p.turnsLeft +
+        (p.turnsLeft === 1 ? " turn." : " turns."));
+    });
+    box.appendChild(uf);
+
+    // Construct a building.
+    if (room <= 0) return;
+    box.appendChild(el("h3", "Construct a building"));
+    var bf = el("form", undefined, "order-form");
+    var bl = el("label", "Building");
+    var bsel = document.createElement("select");
+    SF.BUILDING_ORDER.forEach(function (k) {
+      var b = SF.BUILDINGS[k];
+      var problem = SF.buildingProblem(state, me(), id, k);
+      var text = capitalize(b.name) + ", " + b.cost + " industry, " + b.turns + " turns";
+      if (problem) text += ". " + problem;
+      var o = el("option", text);
+      o.value = k;
+      bsel.appendChild(o);
+    });
+    bl.appendChild(bsel);
+    bf.appendChild(bl);
+    var berr = el("p");
+    berr.setAttribute("role", "alert");
+    bf.appendChild(berr);
+    var bb = el("button", "Start construction", "act primary");
+    bb.type = "submit";
+    bf.appendChild(bb);
+    bf.addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      var problem = SF.buildingProblem(state, me(), id, bsel.value);
+      if (problem) { berr.textContent = problem; return; }
+      var p = SF.startBuilding(state, me(), id, bsel.value);
+      afterOrder("Building " + SF.withArticle(SF.BUILDINGS[p.type].name) + " at " + id + ", ready in " + p.turnsLeft + " turns.");
+    });
+    box.appendChild(bf);
   }
 
   function afterOrder(msg) {
@@ -473,13 +573,13 @@
     fillCities("your-cities", me());
     fillCities("enemy-cities", foe());
   }
-  function fillCities(listId, home) {
+  function fillCities(listId, owner) {
     var ul = $(listId);
     ul.innerHTML = "";
-    SF.allSquares().forEach(function (sq) {
-      if (sq.terrain.key !== "city" || sq.home !== home) return;
+    SF.citiesOf(state, owner).forEach(function (id) {
+      var sq = SF.sq(id);
       var li = el("li");
-      var b = el("button", sq.id + ", " + SF.terrainName(sq), "act");
+      var b = el("button", sq.id + ", " + SF.terrainName(sq) + (sq.home !== owner ? ", captured" : ""), "act");
       b.type = "button";
       b.addEventListener("click", function () { focusSquare(sq.id); });
       li.appendChild(b);
@@ -551,6 +651,21 @@
         }
         if (e.shotDown) return "Your anti-aircraft guns shot down an enemy scout plane over " + e.at + ".";
         return vis.wide[e.at] ? "An enemy scout plane flew over " + e.at + "." : null;
+      case "built":
+        if (!mine) return null;
+        return capitalize(SF.withArticle("new " + e.what)) + (e.kind === "unit" ? " is ready at " : " is finished at ") + e.at + ".";
+      case "cityCaptured":
+        if (mine) {
+          var retook = SF.sq(e.at).home === v;
+          return retook ? "You retook your city " + e.at + "." :
+            "You captured " + e.at + ". It produces at " + Math.round(SF.CAPTURE_RATE * 100) + "% for " + SF.CAPTURE_TURNS + " turns.";
+        }
+        if (e.from !== v) return null;
+        return "The enemy captured your city " + e.at + "." +
+          (e.lost.length ? " Production there was lost: " + e.lost.join(", ") + "." : "");
+      case "income":
+        if (!mine) return null;
+        return "Income: " + resourceList(e.income) + ".";
       case "planesLost":
         if (mine) return "Your " + e.what + " at " + e.at + (startsOne(e.what) ? " was" : " were") + " destroyed on the ground.";
         return "You destroyed enemy " + e.what + " on the ground at " + e.at + ".";
@@ -584,15 +699,196 @@
     $("status").textContent = "Turn " + state.turn + ". " + who + ".";
   }
 
+  // ---------- Starting buildings ----------
+  var plan = null;   // the plan being edited on the setup screen
+
+  function planUsed(id) {
+    var n = 0;
+    SF.BUILDING_ORDER.forEach(function (k) { n += (plan[id] && plan[id][k]) || 0; });
+    return n;
+  }
+
+  function renderPlanLeft() {
+    var used = SF.planCost(plan);
+    $("plan-left").textContent = "Buildings chosen: " + used + " of " + SF.START_BUDGET + ".";
+  }
+
+  function renderPlan() {
+    show("plan");
+    if (!plan) plan = SF.defaultPlan(me());
+    $("plan-heading").textContent = state.mode === "hotseat" ?
+      sideName(me()) + ", choose your starting buildings" : "Choose your starting buildings";
+    $("plan-error").textContent = "";
+    var box = $("plan-cities");
+    box.innerHTML = "";
+    SF.citiesOf(state, me()).forEach(function (id) {
+      var info = SF.cityInfo(id);
+      box.appendChild(el("h3", id + ", " + SF.terrainName(SF.sq(id)) + ", room for " + info.slots +
+        ", manpower " + info.pop + " a turn"));
+      var wrap = el("div", undefined, "order-form");
+      SF.BUILDING_ORDER.forEach(function (k) {
+        var label = el("label", capitalize(SF.BUILDINGS[k].plural) + " at " + id);
+        var sel = document.createElement("select");
+        for (var i = 0; i <= info.slots; i++) {
+          var o = el("option", String(i));
+          o.value = String(i);
+          sel.appendChild(o);
+        }
+        sel.value = String((plan[id] && plan[id][k]) || 0);
+        sel.addEventListener("change", function () {
+          plan[id] = plan[id] || {};
+          plan[id][k] = parseInt(sel.value, 10);
+          renderPlanLeft();
+          var used = planUsed(id);
+          $("plan-error").textContent = used > info.slots ? id + " only has room for " + info.slots + " buildings." : "";
+        });
+        label.appendChild(sel);
+        wrap.appendChild(label);
+      });
+      box.appendChild(wrap);
+    });
+    renderPlanLeft();
+  }
+
+  function confirmPlan() {
+    var problem = SF.planProblem(me(), plan);
+    if (problem) { $("plan-error").textContent = problem; return; }
+    SF.applyPlan(state, me(), plan);
+    plan = null;
+    if (state.mode === "computer") {
+      state.phase = "orders";
+    } else if (me() === 0) {
+      state.current = 1;
+      state.phase = "handoff";
+      state.afterHandoff = "setup";
+    } else {
+      state.current = 0;
+      state.phase = "handoff";
+      state.afterHandoff = "orders";
+    }
+    save();
+    renderAll();
+    (state.phase === "handoff" ? $("handoff-heading") : $("status")).focus();
+  }
+
+  // ---------- Nation ----------
+  function resourceList(r) {
+    return r.industry + " industry, " + r.gasoline + " gasoline, " + r.science + " science, and " +
+      r.recruits + " recruits";
+  }
+
+  function renderNation() {
+    var box = $("nation");
+    box.innerHTML = "";
+    var e = state.econ[me()];
+    var inc = SF.income(state, me());
+    var mp = SF.manpower(state, me());
+    box.appendChild(el("p", "Stockpile: " + resourceList(e) + "."));
+    box.appendChild(el("p", "Each turn: " + resourceList(inc) + ", from " + mp + " manpower."));
+
+    box.appendChild(el("h3", "Workforce"));
+    var form = el("form", undefined, "order-form");
+    var pickers = {};
+    SF.JOB_ORDER.forEach(function (j) {
+      var cap = SF.capacity(state, me(), j);
+      var text = capitalize(SF.JOBS[j].name) + (cap === Infinity ? "" : ", buildings can use " + cap);
+      var label = el("label", text);
+      var sel = document.createElement("select");
+      var max = Math.max(mp, e.workers[j]);
+      for (var i = 0; i <= max; i++) {
+        var o = el("option", String(i));
+        o.value = String(i);
+        sel.appendChild(o);
+      }
+      sel.value = String(e.workers[j]);
+      sel.addEventListener("change", showFree);
+      label.appendChild(sel);
+      form.appendChild(label);
+      pickers[j] = sel;
+    });
+    var free = el("p");
+    form.appendChild(free);
+    var err = el("p");
+    err.setAttribute("role", "alert");
+    form.appendChild(err);
+    var saveBtn = el("button", "Save workforce", "act primary");
+    saveBtn.type = "submit";
+    form.appendChild(saveBtn);
+
+    function chosen() {
+      var w = {};
+      SF.JOB_ORDER.forEach(function (j) { w[j] = parseInt(pickers[j].value, 10); });
+      return w;
+    }
+    function showFree() {
+      var w = chosen(), total = 0;
+      SF.JOB_ORDER.forEach(function (j) { total += w[j]; });
+      free.textContent = total <= mp ? "Unassigned: " + (mp - total) + "." : "Over by " + (total - mp) + ".";
+    }
+    showFree();
+
+    form.addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      try {
+        SF.setWorkers(state, me(), chosen());
+      } catch (x) {
+        err.textContent = "You only have " + mp + " manpower. Lower some jobs first.";
+        return;
+      }
+      save();
+      renderAll();
+      $("nation-heading").focus();
+      var after = SF.income(state, me());
+      announce("Workforce saved. Each turn: " + resourceList(after) + ".");
+    });
+    box.appendChild(form);
+
+    box.appendChild(el("h3", "In production"));
+    var mine = state.projects.filter(function (p) { return p.owner === me(); });
+    if (!mine.length) {
+      box.appendChild(el("p", "Nothing in production."));
+    } else {
+      var ul = el("ul", undefined, "plain");
+      mine.forEach(function (p) {
+        var li = el("li");
+        li.appendChild(el("span", projectText(p) + "."));
+        if (SF.canCancelProject(state, p)) li.appendChild(cancelProjectButton(p, "nation-heading"));
+        ul.appendChild(li);
+      });
+      box.appendChild(ul);
+    }
+  }
+
+  function projectText(p) {
+    var what = p.kind === "unit" ? capitalize(SF.projectName(p)) : capitalize(SF.projectName(p)) + " construction";
+    return what + " at " + p.city + ", ready in " + p.turnsLeft + (p.turnsLeft === 1 ? " turn" : " turns");
+  }
+
+  function cancelProjectButton(p, focusId) {
+    var b = el("button", "Cancel", "act");
+    b.type = "button";
+    b.setAttribute("aria-label", "Cancel " + projectText(p) + ", full refund");
+    b.addEventListener("click", function () {
+      SF.cancelProject(state, me(), p.id);
+      save();
+      renderAll();
+      $(focusId).focus();
+      announce("Canceled and refunded.");
+    });
+    return b;
+  }
+
   function renderAll() {
     if (!state) { renderSetup(); return; }
     if (state.phase === "handoff") { renderHandoff(); return; }
+    if (state.phase === "setup") { renderPlan(); return; }
     show("game");
     vis = SF.vision(state, me());
     renderStatus();
     renderReport();
     renderMap();
     renderDetails();
+    renderNation();
     renderOrders();
     renderCities();
   }
@@ -618,9 +914,10 @@
   function startGame(mode) {
     state = SF.newGame(mode);
     selected = null;
+    plan = null;
     save();
     renderAll();
-    $("status").focus();
+    $("plan-heading").focus();
   }
 
   function lockIn() {
@@ -640,6 +937,7 @@
       state.current = 0;
     }
     state.phase = "handoff";
+    state.afterHandoff = "orders";
     selected = null;
     save();
     renderAll();
@@ -654,15 +952,25 @@
   $("continue-btn").addEventListener("click", function () {
     state = loadSave();
     selected = null;
+    plan = null;
     renderAll();
-    (state.phase === "handoff" ? $("handoff-heading") : $("status")).focus();
+    var focus = { handoff: "handoff-heading", setup: "plan-heading" }[state.phase] || "status";
+    $(focus).focus();
   });
   $("handoff-btn").addEventListener("click", function () {
-    state.phase = "orders";
+    state.phase = state.afterHandoff || "orders";
     save();
     renderAll();
-    (state.report ? $("report-heading") : $("status")).focus();
+    if (state.phase === "setup") $("plan-heading").focus();
+    else (state.report ? $("report-heading") : $("status")).focus();
   });
+  $("plan-default").addEventListener("click", function () {
+    plan = SF.defaultPlan(me());
+    renderPlan();
+    $("plan-heading").focus();
+    announce("Balanced plan restored.");
+  });
+  $("plan-done").addEventListener("click", confirmPlan);
   $("lock-btn").addEventListener("click", lockIn);
   $("next-btn").addEventListener("click", nextWaiting);
   $("quit-btn").addEventListener("click", function () {

@@ -238,6 +238,48 @@ These numbers are starting points for playtesting.
 - Bombardment happens before any movement or battles.
 - Each gun has a 50% chance to destroy one unit, lowered by terrain: 5 points on river squares, 10 in forest, 15 in cities, and 25 in mountains.
 
+## Economy, first version
+
+These numbers are starting points for playtesting.
+
+**Starting buildings.** Before the game, each player secretly picks 10 starting buildings and places them in their cities. A balanced plan is filled in to start: 3 factories, 3 refineries, 3 labs, and 1 airfield at the capital.
+
+**Cities.**
+- F2, the capital: 6 manpower a turn, room for 5 buildings.
+- C3, L3, and O3: 3 manpower a turn, room for 3 buildings each.
+- A5, E6, and I6: 2 manpower a turn, room for 2 buildings each.
+- That is 21 manpower a turn to start.
+
+**Workforce.** Manpower is assigned for the whole nation, and the assignment carries over from turn to turn until you change it.
+- Factory workers make industry, refinery workers make gasoline, and lab workers make science. Recruits are saved up to build units.
+- Each worker makes 1 a turn, but each factory, refinery, or lab can only use 3 workers.
+- If you lose cities and have fewer people than jobs, jobs are filled in order: factories, refineries, labs, then recruits.
+- Science is saved up until research arrives.
+- The starting workforce is 9 in factories, 3 in refineries, 6 in labs, and 3 recruits.
+
+**Starting stockpile.** 20 industry, 10 gasoline, no science, and 6 recruits.
+
+**Units.** Paid up front, built in a city you hold, and ready after the listed turns.
+- Infantry: 3 industry, 2 recruits, 1 turn.
+- Engineer: 4 industry, 1 recruit, 1 turn.
+- Anti-aircraft gun: 5 industry, 1 recruit, 1 turn.
+- Artillery: 6 industry, 1 recruit, 2 turns. Needs a factory in that city.
+- Tank: 10 industry, 1 recruit, 2 turns. Needs a factory in that city.
+- Special forces: 8 industry, 2 recruits, 2 turns.
+- Scout plane: 8 industry, 1 recruit, 2 turns. Needs an airfield in that city.
+
+**Buildings.** Factories, refineries, and labs cost 12 industry. Airfields cost 15. Each takes 3 turns.
+
+**Canceling.** Units and buildings can be canceled for a full refund in the turn they were ordered.
+
+**Gasoline.** Each scout plane mission uses 2 gasoline. Ships and planes will use more once they arrive.
+
+**Capturing cities.**
+- A city changes hands when the other side's ground units hold it. It keeps whatever buildings it has.
+- A captured enemy city produces for you right away, but at 25% for its first 3 turns.
+- Retaking your own city brings it back to full strength at once.
+- Anything the old owner was building there is lost.
+
 ## Starting armies, first version
 
 Each side starts with the mirror image of this army. South's squares are the same column, mirrored row.
@@ -256,7 +298,7 @@ Each step ends with something playable to test on iPhone and computer.
 2. **Units and movement:** starting armies, giving move orders, terrain movement rules, and the lock-in button, played pass-the-phone or against an AI that only defends. (Built.)
 3. **Combat:** battles when enemies meet, odds announced before attacking, and turn reports. (Built.)
 4. **Fog of war:** hidden enemy units, adjacent vision, and scout planes. (Built.)
-5. **Economy:** cities, buildings, manpower, industry, gasoline, and building new units.
+5. **Economy:** cities, buildings, manpower, industry, gasoline, and building new units. (Built.)
 6. **Sea and air:** ships, transports, invasions, fighters, bombers, and air control.
 7. **Missiles and defenses.**
 8. **Science and research.**
