@@ -59,6 +59,7 @@ SF.UNIT_TYPES = {
   missile: { name: "missile", plural: "missiles", air: true, missile: true, attack: 0, defense: 0, loss: 0, range: 14 },
   // Satellites are not on the map. They are listed here for their names only.
   satellite: { name: "satellite", plural: "satellites", space: true, loss: 0 },
+  warhead: { name: "nuclear warhead", plural: "nuclear warheads", space: true, loss: 0 },
   // Ships move on ocean squares and dock in port cities you hold. Like
   // planes, they do not hold land squares.
   destroyer: { name: "destroyer", plural: "destroyers", naval: true, move: 4, attack: 5, defense: 5, loss: 3,
@@ -108,6 +109,17 @@ SF.MISSILE_DEFENSE_SHOTS = 2;    // missiles each battery can try to stop per tu
 SF.MISSILE_DEFENSE_CHANCE = 0.75;
 SF.DESTROYER_MISSILE_SHOTS = 1;  // destroyers guard squares within 1 of them
 SF.DESTROYER_MISSILE_CHANCE = 0.6;
+
+// Nuclear weapons
+SF.NUKE = {
+  fallout: 6,          // turns the target square stays radioactive, and its city produces nothing
+  ringKill: 0.5,       // chance each unit on the 8 squares around the target is destroyed
+  ringBuildings: 0.5,  // share of buildings lost in cities on those squares
+  subRange: 8,         // squares a submarine can fire a nuclear missile
+  firstUse: 30,        // morale lost by the first side to launch
+  laterUse: 10,        // morale lost for each later launch by that side
+  struck: 10           // morale lost by the side hit, for each detonation
+};
 
 // Battles
 SF.BATTLE_ROUNDS = 3;

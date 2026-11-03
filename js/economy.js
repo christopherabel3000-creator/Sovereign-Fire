@@ -70,6 +70,7 @@
     bomber: { industry: 14, recruits: 1, gasoline: 4, turns: 2, needs: "airfield" },
     missile: { industry: 15, recruits: 0, gasoline: 3, turns: 2, needs: "factory" },
     satellite: { industry: 30, recruits: 0, gasoline: 6, turns: 3, needs: "factory", tech: "satellites" },
+    warhead: { industry: 60, recruits: 0, gasoline: 10, turns: 4, needs: "factory", tech: "bomb" },
     destroyer: { industry: 12, recruits: 2, gasoline: 4, turns: 2, needs: "port" },
     submarine: { industry: 12, recruits: 2, gasoline: 4, turns: 2, needs: "port" },
     transport: { industry: 8, recruits: 1, gasoline: 3, turns: 2, needs: "port" },
@@ -181,6 +182,7 @@
   // 1, or 0.25 for an enemy city captured in the last 3 turns.
   SF.cityRate = function (state, id) {
     var c = state.cities[id];
+    if (SF.radioactive(state, id)) return 0;
     if (c.captured === null) return 1;
     return state.turn - c.captured < SF.CAPTURE_TURNS ? SF.CAPTURE_RATE : 1;
   };
@@ -268,6 +270,7 @@
     var c = state.cities[city], cost = SF.unitCost(state, owner, type), e = state.econ[owner];
     if (cost.tech && !SF.hasTech(state, owner, cost.tech)) return "Needs " + SF.tech(cost.tech).name + " research.";
     if (!c || c.owner !== owner) return "You do not hold " + city + ".";
+    if (SF.radioactive(state, city)) return "The city is radioactive.";
     if (cost.needs && !c.buildings[cost.needs]) return "Needs " + SF.withArticle(SF.BUILDINGS[cost.needs].name) + " in this city.";
     if (SF.UNIT_TYPES[type].naval && SF.blockaded(state, city)) return "The port is blockaded by enemy warships.";
     if (e.industry < cost.industry) return "Needs " + cost.industry + " industry. You have " + e.industry + ".";
@@ -355,6 +358,8 @@
       if (p.turnsLeft > 0) { still.push(p); return; }
       if (p.kind === "unit" && p.type === "satellite") {
         SF.launchSatellite(state, p.owner);
+      } else if (p.kind === "unit" && p.type === "warhead") {
+        state.econ[p.owner].warheads = (state.econ[p.owner].warheads || 0) + 1;
       } else if (p.kind === "unit") {
         state.units.push({ id: state.nextUnitId++, type: p.type, owner: p.owner, at: p.city });
       } else {

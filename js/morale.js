@@ -177,6 +177,16 @@
   // during the turn. Writes a "morale" event for each side.
   SF.applyMorale = function (state, events, tally) {
     var M = SF.MORALE;
+    // Work out each side's launch cost from who had used them before this turn.
+    var firstCost = [0, 1].map(function (o) { return SF.nukeMoraleCost(state, o); });
+    if (tally.launched) {
+      var l0 = tally.launched[0] > 0, l1 = tally.launched[1] > 0;
+      if (state.firstNuke === null || state.firstNuke === undefined) {
+        if (l0 && l1) state.firstNuke = "both";
+        else if (l0) state.firstNuke = 0;
+        else if (l1) state.firstNuke = 1;
+      }
+    }
     [0, 1].forEach(function (owner) {
       var n = SF.nation(state, owner), g = SF.gov(state, owner);
       var reasons = [];
@@ -196,6 +206,16 @@
           else good(capital ? M.capitalTaken : M.cityTaken, capital ? "the enemy capital taken" : "a city captured");
         }
       });
+      // Nuclear weapons: the first side to launch pays heavily, a side
+      // striking back after being hit first does not.
+      if (tally.launched && tally.launched[owner]) {
+        var cost = 0;
+        for (var i = 0; i < tally.launched[owner]; i++) {
+          cost += i === 0 ? firstCost[owner] : (firstCost[owner] ? SF.NUKE.laterUse : 0);
+        }
+        if (cost) { down += cost; reasons.push(firstCost[owner] === SF.NUKE.firstUse ? "using nuclear weapons first" : "using nuclear weapons"); }
+      }
+      bad(tally.nuked ? tally.nuked[owner] * SF.NUKE.struck : 0, "nuclear attack");
       var blockaded = SF.citiesOf(state, owner).filter(function (id) {
         return state.cities[id].buildings.port > 0 && SF.blockaded(state, id);
       }).length;

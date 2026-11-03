@@ -165,7 +165,7 @@ Each turn, morale changes from:
 - A city lost: 8. The capital lost: 20.
 - Each blockaded port: 1 a turn.
 - Military State only: 2 a turn without a battle won in the last 3 turns.
-- Using nuclear weapons first: coming in step 10.
+- Using nuclear weapons first, and being hit by them: see Nuclear weapons.
 
 Morale rises from:
 - Battles won: 1 each, up to 3 a turn.
@@ -176,10 +176,26 @@ Government changes how hard the bad news hits: 50% more for a Democracy, 40% les
 
 ## Nuclear weapons
 
-- Researched late and extremely expensive.
-- Delivered by missile, bomber, or submarine, so missile defense and fighters can stop them.
-- Struck squares become wasteland for several turns.
-- Using a nuke first causes a huge morale hit. A nation striking back after being nuked first does not take that penalty.
+**Warheads.** After Nuclear weapons research, any city with a factory can build a nuclear warhead: 60 industry, 10 gasoline, and 4 turns. Warheads are kept in a national stockpile.
+
+**Delivery.** A nuclear strike needs a warhead plus one of:
+- A missile in a city, with normal missile range. The missile is used up.
+- A bomber, with normal bomber range. It faces enemy fighters patrolling over the target, anti-aircraft guns, and air defense batteries, like any bomber.
+- A submarine at sea, up to 8 squares away. The submarine is not used up.
+
+Missiles from cities and submarines face the same missile defense as any missile. Launching takes a confirmation check box, and can be canceled before locking in, which returns the warhead.
+
+**The blast.**
+- Every unit on the target square is destroyed, on both sides. A city there loses every building.
+- Each unit on the 8 squares around it has a 50% chance to be destroyed, and cities there lose half their buildings, rounded down.
+- The target square is radioactive for 6 turns. No units can enter, and a city there produces nothing.
+- Every launch is reported to both sides, even when shot down.
+
+**Morale.**
+- The first side to launch loses 30 morale, even if the weapon is shot down. Each later launch by that side costs 10 more.
+- A side that strikes back after the enemy launched first loses no morale for its own launches.
+- If both sides launch first in the same turn, both pay the first-use cost.
+- The side hit loses 10 morale for each detonation, plus the usual morale for its losses, made worse or softer by its government.
 
 ## Victory conditions
 
@@ -343,7 +359,7 @@ These numbers are starting points for playtesting.
 - Missiles and defense: Guided missiles, 15% more accurate. Layered missile defense, batteries get 3 shots a turn and are 10% more likely to stop a missile. Anti-satellite missiles, missiles can be fired at enemy satellites, 50% each to destroy one.
 - Intelligence: Code breaking, see the enemy's finished research. Satellites, cities with a factory can build them. Deep cover agents, scout planes and satellites can spot special forces and submarines.
 - Economy: Factory automation, factories use 4 workers. Advanced refining, refineries and labs use 1 more worker. Mass production, units cost 20% less industry.
-- Nuclear: Nuclear physics, no effect on its own. Nuclear power, factories and refineries use 1 more worker. Nuclear weapons, needed to build nuclear weapons, which arrive in step 10.
+- Nuclear: Nuclear physics, no effect on its own. Nuclear power, factories and refineries use 1 more worker. Nuclear weapons, cities with a factory can build nuclear warheads.
 
 **Satellites.** 30 industry, 6 gasoline, and 3 turns, in a city with a factory, after Satellites research. They go into orbit, not onto the map.
 - Each satellite watches the 7 by 7 area around a square of your choosing, and keeps watching it until you change it. New satellites watch the enemy capital.
@@ -387,6 +403,7 @@ These numbers are starting points for playtesting.
 - Carrier: 24 industry, 3 recruits, 8 gasoline, 4 turns. Needs a port.
 - Missile: 15 industry, 3 gasoline, 2 turns. Needs a factory.
 - Satellite: 30 industry, 6 gasoline, 3 turns. Needs a factory and Satellites research.
+- Nuclear warhead: 60 industry, 10 gasoline, 4 turns. Needs a factory and Nuclear weapons research.
 
 **Buildings.** Factories, refineries, labs, and ports cost 12 industry. Airfields cost 15. Each takes 3 turns. Ports can only go in coastal cities. Air defense batteries cost 10 industry and take 2 turns. Missile defense batteries cost 14 industry and take 3 turns.
 
@@ -428,6 +445,6 @@ Each step ends with something playable to test on iPhone and computer.
 7. **Missiles and defenses.** (Built.)
 8. **Science and research.** (Built.)
 9. **Morale, government types, and victory conditions.** (Built.)
-10. **Nuclear weapons.**
+10. **Nuclear weapons.** (Built.)
 11. **A smarter computer opponent.**
 12. **Online play with Firebase,** in the game's own section of the database.

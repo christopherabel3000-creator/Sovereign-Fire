@@ -92,6 +92,11 @@
     if (key === "bridge" && (state.brokenBridges || []).indexOf(id) !== -1) return "river";
     return key;
   };
+  // A square hit by a nuclear weapon, for a while afterwards.
+  SF.radioactive = function (state, id) {
+    return !!(state.fallout && state.fallout[id] && state.fallout[id] >= state.turn);
+  };
+
   SF.bridgeBroken = function (state, id) {
     return SF.sq(id).terrain.key === "bridge" && (state.brokenBridges || []).indexOf(id) !== -1;
   };
@@ -222,7 +227,7 @@
     // Units aboard a transport can only land on a square next to it.
     if (isCargo(u)) {
       SF.neighbors(SF.sq(fromId)).forEach(function (n) {
-        if (!isLand(n.id)) return;
+        if (!isLand(n.id) || SF.radioactive(state, n.id)) return;
         if (SF.terrainAt(state, n.id) === "river" && !t.crossRiver) return;
         best[n.id] = 0;
       });
@@ -238,6 +243,7 @@
       if (rem <= 0) continue;
       SF.neighbors(SF.sq(id)).forEach(function (n) {
         var key = SF.terrainAt(state, n.id);
+        if (SF.radioactive(state, n.id)) return;
         if (naval) {
           if (key !== "ocean") {
             // Ships can dock in a port city you hold, which ends their move.
@@ -352,7 +358,8 @@
     if (landAt) {
       var aboard = transports.reduce(function (acc, t) { return acc.concat(SF.cargoOf(state, t)); }, []).concat(cargo);
       if (!aboard.length) throw new Error("No troops aboard to land");
-      if (SF.sq(to).terrain.key !== "ocean" || SF.landingSquares(to).indexOf(landAt) === -1) throw new Error("Cannot land there");
+      if (SF.sq(to).terrain.key !== "ocean" || SF.landingSquares(to).indexOf(landAt) === -1 ||
+          SF.radioactive(state, landAt)) throw new Error("Cannot land there");
       if (SF.terrainAt(state, landAt) === "river" && aboard.some(function (u) { return !SF.UNIT_TYPES[u.type].crossRiver; })) {
         throw new Error("Tanks cannot land on a river square");
       }
@@ -505,9 +512,45 @@
     return order;
   };
 
+  // ---------- Nuclear weapons ----------
+
+  // Ways this side could deliver a nuclear weapon from a square, with range.
+  SF.nukeMethods = function (state, owner, fromId) {
+    if (!(state.econ[owner].warheads > 0)) return [];
+    var here = SF.unitsAt(state, fromId, owner).filter(function (u) { return !SF.orderFor(state, u.id); });
+    var out = [];
+    var m = here.filter(function (u) { return u.type === "missile"; })[0];
+    if (m) out.push({ method: "missile", unit: m, range: SF.stat(state, owner, "missile", "range") });
+    var b = here.filter(function (u) { return u.type === "bomber"; })[0];
+    if (b) out.push({ method: "bomber", unit: b, range: SF.stat(state, owner, "bomber", "range") });
+    var sub = here.filter(function (u) { return u.type === "submarine" && !isCargo(u); })[0];
+    if (sub && !isLand(fromId)) out.push({ method: "submarine", unit: sub, range: SF.NUKE.subRange });
+    return out;
+  };
+
+  SF.addNuke = function (state, owner, method, unitId, target) {
+    var u = checkUnits(state, owner, [unitId])[0];
+    var way = SF.nukeMethods(state, owner, u.at).filter(function (w) { return w.method === method && w.unit.id === unitId; })[0];
+    if (!way) throw new Error("Cannot launch from here");
+    if (!SF.sq(target) || distance(u.at, target) > way.range) throw new Error("Out of range");
+    state.econ[owner].warheads -= 1;
+    var order = { id: state.nextOrderId++, kind: "nuke", method: method, unitIds: [unitId], from: u.at, to: target, warhead: true };
+    state.orders[owner].push(order);
+    return order;
+  };
+
+  // The morale a launch would cost this side right now.
+  SF.nukeMoraleCost = function (state, owner) {
+    var first = state.firstNuke;
+    if (first === null || first === undefined) return SF.NUKE.firstUse;
+    if (first === owner || first === "both") return SF.NUKE.laterUse;
+    return 0;
+  };
+
   SF.cancelOrder = function (state, owner, orderId) {
     state.orders[owner].forEach(function (o) {
       if (o.id === orderId && o.gas) state.econ[owner].gasoline += o.gas;
+      if (o.id === orderId && o.warhead) state.econ[owner].warheads += 1;
     });
     state.orders[owner] = state.orders[owner].filter(function (o) { return o.id !== orderId; });
   };
@@ -630,7 +673,7 @@
     var events = [];
     state.hinted = state.hinted || [[], []];
     // What happened to each side this turn, for morale.
-    var tally = { lost: [0, 0], wrecked: [0, 0], struck: [0, 0], wins: [0, 0] };
+    var tally = { lost: [0, 0], wrecked: [0, 0], struck: [0, 0], wins: [0, 0], launched: [0, 0], nuked: [0, 0] };
     function struck(id, side) {
       var c = state.cities[id];
       if (c && c.owner === side) tally.struck[side]++;
@@ -886,6 +929,98 @@
         type: "missile", owner: e.owner, from: e.order.from, at: target, mode: e.order.mode,
         fired: missiles.length, stopped: stopped, killed: SF.describeUnits(killed), wrecked: wrecked
       });
+    });
+
+    // Nuclear strikes. Bombers face the same fighters and guns as any bomber;
+    // missiles face the same missile defenses as any missile.
+    function detonate(e) {
+      var target = e.order.to, foeSide = 1 - e.owner;
+      var killed = [[], []], wrecked = [[], []];
+      living().forEach(function (u) {
+        if (u.at === target) { killed[u.owner].push(u); kill([u]); }
+      });
+      around(target, 1).forEach(function (id) {
+        if (id === target) return;
+        living().forEach(function (u) {
+          if (u.at === id && !isCargo(u) && rand() < SF.NUKE.ringKill) { killed[u.owner].push(u); kill([u]); }
+        });
+      });
+      around(target, 1).forEach(function (id) {
+        var c = state.cities[id];
+        if (!c) return;
+        SF.BUILDING_ORDER.forEach(function (k) {
+          var lose = id === target ? c.buildings[k] : Math.floor(c.buildings[k] * SF.NUKE.ringBuildings);
+          for (var i = 0; i < lose; i++) wrecked[c.owner].push(SF.BUILDINGS[k].name);
+          c.buildings[k] -= lose;
+        });
+      });
+      state.fallout = state.fallout || {};
+      state.fallout[target] = state.turn + SF.NUKE.fallout;
+      tally.nuked[foeSide]++;
+      tally.wrecked[0] += wrecked[0].length;
+      tally.wrecked[1] += wrecked[1].length;
+      return {
+        killed: [SF.describeUnits(killed[0]), SF.describeUnits(killed[1])],
+        wrecked: [wrecked[0], wrecked[1]]
+      };
+    }
+    all.filter(function (e) { return e.order.kind === "nuke"; }).forEach(function (e) {
+      var carrier = unitsOf(e.order)[0];
+      var target = e.order.to, foeSide = 1 - e.owner;
+      tally.launched[e.owner]++;
+      var ev = { type: "nuke", owner: e.owner, method: e.order.method, from: e.order.from, at: target };
+      events.push(ev);
+      if (!carrier) { ev.result = "lost"; return; }
+      var through = true;
+      if (e.order.method === "bomber") {
+        var interceptors = fightersOver(foeSide, target);
+        if (interceptors.length) {
+          var out = SF.fight(interceptors, [carrier].concat(fightersOver(e.owner, target)), null, false, rand, null,
+            { rounds: SF.INTERCEPT_ROUNDS });
+          kill(out.attLost); kill(out.defLost);
+        }
+        if (alive[carrier.id]) {
+          var guns = living().filter(function (u) {
+            return u.type === "antiAir" && u.at === target && u.owner === foeSide && isGround(u);
+          }).concat(batteryShots(foeSide, [target]));
+          var aa = SF.AA_CHANCE * (SF.effect(state, e.owner, "stealth") ? 0.5 : 1);
+          guns.forEach(function () { if (alive[carrier.id] && rand() < aa) kill([carrier]); });
+        }
+        through = !!alive[carrier.id];
+        if (!through) { ev.result = "shotDown"; return; }
+      } else {
+        // A missile, from a city or a submarine, is used up.
+        if (e.order.method === "missile") delete alive[carrier.id];
+        var defBonus = SF.satelliteBonus(state, foeSide);
+        var near = around(target, 1);
+        var layers = [];
+        near.forEach(function (id) {
+          var c = state.cities[id];
+          if (c && c.owner === foeSide && c.buildings.missileDefense > 0) {
+            layers.push({ key: "city:" + id,
+              shots: c.buildings.missileDefense * (SF.MISSILE_DEFENSE_SHOTS + SF.effect(state, foeSide, "missileDefenseShots")),
+              chance: SF.MISSILE_DEFENSE_CHANCE + SF.effect(state, foeSide, "missileDefenseChance") + defBonus });
+          }
+        });
+        living().forEach(function (u) {
+          if (u.owner === foeSide && u.type === "destroyer" && !isCargo(u) && near.indexOf(u.at) !== -1) {
+            layers.push({ key: "ship:" + u.id,
+              shots: SF.DESTROYER_MISSILE_SHOTS + SF.effect(state, foeSide, "destroyerMissileShots"),
+              chance: SF.DESTROYER_MISSILE_CHANCE + SF.effect(state, foeSide, "destroyerMissileChance") + defBonus });
+          }
+        });
+        for (var i = 0; i < layers.length && through; i++) {
+          var l = layers[i];
+          if ((shotsUsed[l.key] || 0) >= l.shots) continue;
+          shotsUsed[l.key] = (shotsUsed[l.key] || 0) + 1;
+          if (rand() < l.chance) through = false;
+        }
+        if (!through) { ev.result = "intercepted"; return; }
+      }
+      ev.result = "detonated";
+      var blast = detonate(e);
+      ev.killed = blast.killed;
+      ev.wrecked = blast.wrecked;
     });
 
     // Anti-satellite missiles.

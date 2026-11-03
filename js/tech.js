@@ -93,7 +93,7 @@
       desc: "Each factory and refinery can use 1 more worker.",
       effects: { factoryCap: 1, refineryCap: 1 } },
     { id: "bomb", branch: "nuclear", tier: 3, cost: 120, name: "Nuclear weapons",
-      desc: "Lets you build nuclear weapons. They arrive in a later update.",
+      desc: "Cities with a factory can build nuclear warheads, delivered by missile, bomber, or submarine.",
       effects: { nukes: 1 } }
   ];
 

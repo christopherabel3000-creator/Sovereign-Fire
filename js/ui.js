@@ -5,7 +5,7 @@
   "use strict";
 
   var SAVE_KEY = "sovereignFire.save";
-  var SAVE_VERSION = 6;
+  var SAVE_VERSION = 7;
   var state = null;
   var selected = null;     // id of the selected square
   var buttons = {};        // map square buttons by id
@@ -126,6 +126,7 @@
       else if (o.kind === "repair") return;
       else if (o.kind === "missile") t[o.to] = "missile";
       else if (o.kind === "asat") return;
+      else if (o.kind === "nuke") t[o.to] = "nuke";
       else t[o.to] = knownEnemy(o.to) ? "attack" : "move";
       if (o.landAt) t[o.landAt] = knownEnemy(o.landAt) ? "attack" : "landing";
     });
@@ -141,7 +142,8 @@
     patrol: "your fighters patrolling here",
     bomb: "your bombing target",
     rebase: "your planes moving here",
-    missile: "your missile target"
+    missile: "your missile target",
+    nuke: "your nuclear target"
   };
 
   function squareLabel(sq, targets) {
@@ -154,6 +156,7 @@
     if (terr && !sameSide) parts.push(terr);
     if (mine.length) parts.push("your " + stackText(mine));
     if (theirs.length) parts.push("enemy " + SF.describeUnits(theirs));
+    if (SF.radioactive(state, sq.id)) parts.push("radioactive");
     if (isHidden(sq.id)) parts.push("hidden");
     if (targets[sq.id]) parts.push(TARGET_TEXT[targets[sq.id]]);
     return parts.join(", ");
@@ -227,6 +230,7 @@
     if (o.kind === "repair") return "rebuilding the bridge";
     if (o.kind === "missile") return "firing at " + (o.mode === "buildings" ? "buildings in " : "") + o.to;
     if (o.kind === "asat") return "firing at enemy satellites";
+    if (o.kind === "nuke") return "launching a nuclear strike on " + o.to;
     if (o.kind === "sail") {
       var text = (knownEnemy(o.to) ? "attacking " : "sailing to ") + o.to;
       var loading = state.units.filter(function (u) { return (o.cargoIds || []).indexOf(u.id) !== -1; });
@@ -265,6 +269,10 @@
     var sq = SF.sq(selected);
     var terr = territory(sq);
     box.appendChild(el("p", sq.id + ", " + tName(sq) + (terr ? ", " + terr : "") + "."));
+    if (SF.radioactive(state, sq.id)) {
+      box.appendChild(el("p", "Radioactive after a nuclear strike, until the end of turn " + state.fallout[sq.id] +
+        ". No units can enter, and a city here produces nothing."));
+    }
     box.appendChild(el("p", SF.bridgeBroken(state, sq.id) ?
       "Destroyed. Units cross here like a river until an engineer rebuilds it." : SF.NOTES[sq.terrain.key]));
     if (sq.terrain.key === "city" && SF.isCoastal(sq)) box.appendChild(el("p", "Can build a port."));
@@ -318,6 +326,7 @@
     renderBombForm(box, sq, byType.bomber || []);
     renderRebaseForm(box, sq, waitingNow.filter(function (u) { return SF.isAir(u) && u.type !== "missile"; }));
     renderMissileForm(box, sq, byType.missile || []);
+    renderNukeForm(box, sq);
     renderRepairForm(box, sq, (byType.engineer || []).filter(function (u) { return !SF.isCargo(u); }));
   }
 
@@ -527,6 +536,58 @@
       var use = missiles.slice(0, parseInt(count.value, 10));
       SF.addMissile(state, me(), use.map(function (u) { return u.id; }), v, mode.value);
       afterOrder("Ordered " + SF.describeUnits(use) + " fired at " + (mode.value === "buildings" ? "buildings in " : "") + v + ".");
+    });
+    box.appendChild(form);
+  }
+
+  var NUKE_METHOD = { missile: "Nuclear missile", bomber: "Bomber carrying a nuclear bomb", submarine: "Submarine-launched nuclear missile" };
+
+  function renderNukeForm(box, sq) {
+    var ways = SF.nukeMethods(state, me(), sq.id);
+    if (!ways.length) return;
+    box.appendChild(el("h3", "Nuclear strike"));
+    var form = el("form", undefined, "order-form");
+    var cost = SF.nukeMoraleCost(state, me());
+    var first = state.firstNuke;
+    var warning = first === null || first === undefined ?
+      "No one has used nuclear weapons yet. Launching first costs your nation " + cost + " morale, even if it is shot down." :
+      cost ? "You used nuclear weapons first. Each launch costs " + cost + " more morale." :
+      "The enemy used nuclear weapons first. Striking back costs your nation no morale.";
+    form.appendChild(el("p", "You have " + state.econ[me()].warheads + " nuclear " +
+      (state.econ[me()].warheads === 1 ? "warhead" : "warheads") + ". " + warning +
+      " Everything on the target square is destroyed, and the 8 squares around it are badly damaged. The target stays radioactive for " +
+      SF.NUKE.fallout + " turns."));
+    var mLabel = el("label", "Deliver by");
+    var method = document.createElement("select");
+    ways.forEach(function (w, i) {
+      var o = el("option", NUKE_METHOD[w.method] + ", range " + w.range);
+      o.value = String(i);
+      method.appendChild(o);
+    });
+    mLabel.appendChild(method);
+    form.appendChild(mLabel);
+    var input = squareInput(form, "Target square");
+    var cLabel = el("label");
+    var check = document.createElement("input");
+    check.type = "checkbox";
+    check.style.width = "auto";
+    cLabel.appendChild(check);
+    cLabel.appendChild(document.createTextNode(" I want to launch a nuclear weapon"));
+    form.appendChild(cLabel);
+    var error = formError(form);
+    submitButton(form, "Launch nuclear strike");
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var w = ways[parseInt(method.value, 10)];
+      var v = input.value.trim().toUpperCase().replace(/\s+/g, "");
+      if (!SF.sq(v)) { error.textContent = "Not a square. Use a letter A to P and a number 1 to 16."; return; }
+      if (SF.distance(sq.id, v) > w.range) {
+        error.textContent = v + " is " + SF.distance(sq.id, v) + " squares away. The limit is " + w.range + ".";
+        return;
+      }
+      if (!check.checked) { error.textContent = "Check the box to confirm the launch."; return; }
+      SF.addNuke(state, me(), w.method, w.unit.id, v);
+      afterOrder("Nuclear strike on " + v + " ordered. You can still cancel it before locking in.");
     });
     box.appendChild(form);
   }
@@ -1129,6 +1190,8 @@
         return bombingText(e, v);
       case "missile":
         return missileText(e, v);
+      case "nuke":
+        return nukeText(e, v);
       case "asat":
         if (mine) {
           return "You fired " + e.fired + " anti-satellite " + (e.fired === 1 ? "missile" : "missiles") + ". " +
@@ -1186,6 +1249,25 @@
         return "You destroyed enemy " + e.what + " at " + e.at + " when you took the city.";
     }
     return null;
+  }
+
+  // Every nuclear launch is known to both sides.
+  function nukeText(e, v) {
+    var how = { missile: "missile", bomber: "bomber", submarine: "submarine-launched missile" }[e.method];
+    var mine = e.owner === v;
+    if (e.result !== "detonated") {
+      var why = e.result === "shotDown" ? "was shot down" : e.result === "intercepted" ? "was intercepted" : "never launched";
+      return mine ? "Your nuclear " + how + " aimed at " + e.at + " " + why + "." :
+        "The enemy launched a nuclear " + how + " at " + e.at + ". It " + why + ".";
+    }
+    var s = (mine ? "Your nuclear " + how + " struck " : "An enemy nuclear " + how + " struck ") + e.at + ". ";
+    var mineLost = e.killed[v], theirsLost = e.killed[1 - v];
+    var mineBuilt = e.wrecked[v], theirsBuilt = e.wrecked[1 - v];
+    if (mineLost) s += "You lost " + mineLost + ". ";
+    if (theirsLost) s += "The enemy lost " + theirsLost + ". ";
+    if (mineBuilt.length) s += "Your buildings destroyed: " + mineBuilt.length + ". ";
+    if (theirsBuilt.length) s += "Enemy buildings destroyed: " + theirsBuilt.length + ". ";
+    return s + e.at + " is radioactive for " + SF.NUKE.fallout + " turns.";
   }
 
   function missileText(e, v) {
@@ -1527,6 +1609,7 @@
     abp.appendChild(ab);
     box.appendChild(abp);
     box.appendChild(el("p", "Stockpile: " + resourceList(e) + "."));
+    if (e.warheads) box.appendChild(el("p", "Nuclear warheads ready: " + e.warheads + "."));
     box.appendChild(el("p", "Each turn: " + resourceList(inc) + ", from " + mp + " manpower."));
 
     box.appendChild(el("h3", "Workforce"));
