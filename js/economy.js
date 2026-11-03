@@ -48,11 +48,13 @@
     artillery: { industry: 6, recruits: 1, turns: 2, needs: "factory" },
     tank: { industry: 10, recruits: 1, turns: 2, needs: "factory" },
     specialForces: { industry: 8, recruits: 2, turns: 2 },
-    scoutPlane: { industry: 8, recruits: 1, turns: 2, needs: "airfield" },
-    destroyer: { industry: 12, recruits: 2, turns: 2, needs: "port" },
-    submarine: { industry: 12, recruits: 2, turns: 2, needs: "port" },
-    transport: { industry: 8, recruits: 1, turns: 2, needs: "port" },
-    carrier: { industry: 24, recruits: 3, turns: 4, needs: "port" }
+    scoutPlane: { industry: 8, recruits: 1, gasoline: 2, turns: 2, needs: "airfield" },
+    fighter: { industry: 10, recruits: 1, gasoline: 3, turns: 2, needs: "airfield" },
+    bomber: { industry: 14, recruits: 1, gasoline: 4, turns: 2, needs: "airfield" },
+    destroyer: { industry: 12, recruits: 2, gasoline: 4, turns: 2, needs: "port" },
+    submarine: { industry: 12, recruits: 2, gasoline: 4, turns: 2, needs: "port" },
+    transport: { industry: 8, recruits: 1, gasoline: 3, turns: 2, needs: "port" },
+    carrier: { industry: 24, recruits: 3, gasoline: 8, turns: 4, needs: "port" }
   };
 
   SF.START_BUDGET = 10;   // starting buildings, chosen before the game
@@ -66,7 +68,6 @@
   };
   SF.START_STOCK = { industry: 20, gasoline: 10, science: 0, recruits: 6 };
   SF.DEFAULT_WORKERS = { factory: 9, refinery: 3, lab: 6, recruit: 3 };
-  SF.SCOUT_GAS = 2;             // gasoline per scout mission
   SF.CAPTURE_RATE = 0.25;       // captured enemy cities produce at 25%...
   SF.CAPTURE_TURNS = 3;         // ...for their first 3 turns
 
@@ -233,6 +234,7 @@
     if (SF.UNIT_TYPES[type].naval && SF.blockaded(state, city)) return "The port is blockaded by enemy warships.";
     if (e.industry < cost.industry) return "Needs " + cost.industry + " industry. You have " + e.industry + ".";
     if (e.recruits < cost.recruits) return "Needs " + cost.recruits + " recruits. You have " + e.recruits + ".";
+    if (e.gasoline < (cost.gasoline || 0)) return "Needs " + cost.gasoline + " gasoline. You have " + e.gasoline + ".";
     return null;
   };
 
@@ -251,9 +253,11 @@
     var cost = SF.UNIT_COST[type], e = state.econ[owner];
     e.industry -= cost.industry;
     e.recruits -= cost.recruits;
+    e.gasoline -= cost.gasoline || 0;
     var p = {
       id: state.nextProjectId++, owner: owner, city: city, kind: "unit", type: type,
-      turnsLeft: cost.turns, started: state.turn, paid: { industry: cost.industry, recruits: cost.recruits }
+      turnsLeft: cost.turns, started: state.turn,
+      paid: { industry: cost.industry, recruits: cost.recruits, gasoline: cost.gasoline || 0 }
     };
     state.projects.push(p);
     return p;
@@ -280,6 +284,7 @@
     if (!p || !SF.canCancelProject(state, p)) throw new Error("Cannot cancel");
     state.econ[owner].industry += p.paid.industry;
     state.econ[owner].recruits += p.paid.recruits;
+    state.econ[owner].gasoline += p.paid.gasoline || 0;
     state.projects = state.projects.filter(function (x) { return x !== p; });
   };
 
@@ -320,28 +325,11 @@
     state.projects = still;
   };
 
-  // Gasoline all of a side's ships use each turn.
-  SF.upkeep = function (state, owner) {
-    var n = 0;
-    state.units.forEach(function (u) { if (u.owner === owner) n += SF.UPKEEP[u.type] || 0; });
-    return n;
-  };
-
-  // Income comes in, then ships use their gasoline. If there is not enough,
-  // the fleet is out of fuel and cannot sail next turn.
   SF.collectIncome = function (state, events) {
     [0, 1].forEach(function (owner) {
       var inc = SF.income(state, owner), e = state.econ[owner];
       SF.RESOURCES.forEach(function (r) { e[r] += inc[r]; });
-      var up = SF.upkeep(state, owner);
-      if (e.gasoline >= up) {
-        e.gasoline -= up;
-        e.noFuel = false;
-      } else {
-        e.gasoline = 0;
-        e.noFuel = true;
-      }
-      events.push({ type: "income", owner: owner, income: inc, upkeep: up, noFuel: e.noFuel });
+      events.push({ type: "income", owner: owner, income: inc });
     });
   };
 

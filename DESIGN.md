@@ -53,12 +53,12 @@ Many units can share a square, but each square holds only one nation's units. Wh
 
 - **Manpower:** the core resource. It comes from cities and is assigned to producing the other resources or to building units. Infantry and other ground units cost manpower.
 - **Industry:** used to build units and buildings.
-- **Gasoline:** ships and planes use it every turn. With no gasoline, they can't sail or fly.
+- **Gasoline:** paid once when a ship or plane is built. There is no gasoline upkeep.
 - **Science:** used for research.
 
 ## Upkeep
 
-Ships and planes cost gasoline each turn. Ground units have no upkeep.
+There is no upkeep. Ships and planes cost gasoline once, when they are built.
 
 ## Supply
 
@@ -246,7 +246,7 @@ These numbers are starting points for playtesting.
 - Destroyer: moves 4, attack 5, defense 5. Hunts submarines. Its sonar finds submarines up to 2 squares away. Can bombard the shore.
 - Submarine: moves 3, attack 6, defense 3. Hunts transports and carriers. Only spotted by units right next to it, or by a destroyer's sonar.
 - Transport: moves 4, attack 0, defense 1. Carries 4 spaces of troops. Tanks and artillery take 2 spaces, everything else 1.
-- Carrier: moves 3, attack 1, defense 4. Will carry planes once air arrives.
+- Carrier: moves 3, attack 1, defense 4. Carries up to 4 planes. If it sinks, they are lost.
 
 **Naval battles** use the same rules as land battles, with no terrain bonus at sea. A unit fighting a type it hunts gets 3 extra attack and defense. Ships cannot attack land units directly, except by shore bombardment.
 
@@ -258,11 +258,43 @@ These numbers are starting points for playtesting.
 - If a landing fails, the survivors stay aboard. If a transport sinks, everything aboard is lost.
 - A transport driven back by a sea battle returns to where it started. Troops on a transport in port go ashore there.
 
-**Shore bombardment.** Destroyers can fire at visible enemy troops on a land square next to them, like artillery. Each destroyer has a 40% chance to destroy one unit, lowered by the same terrain amounts. Carriers' planes will join in once air arrives.
+**Shore bombardment.** Destroyers can fire at visible enemy troops on a land square next to them, like artillery. Each destroyer has a 40% chance to destroy one unit, lowered by the same terrain amounts. Bombers on a carrier can bomb the shore too, from wherever the carrier is.
 
 **Blockades.** Enemy warships on a square next to a port stop it from building ships. Blockades will hurt morale once morale arrives.
 
 **Ports and capture.** Ships docked in a city the enemy captures are destroyed, along with planes there.
+
+## Air, first version
+
+These numbers are starting points for playtesting.
+
+**Planes.** Planes are based in cities with airfields, or on carriers. They do not hold squares. Each turn, each plane can fly one mission from its base, and returns home afterwards.
+- Fighter: attack 6, defense 6, range 6.
+- Bomber: attack 1, defense 2, range 8.
+- Scout plane: range 10, as before.
+
+**Missions.**
+- **Patrol:** fighters patrol the 3 by 3 area around a square.
+- **Bombing run:** bombers attack one of three targets:
+  - Visible enemy troops: each bomber has a 50% chance to destroy one unit, lowered by terrain like artillery.
+  - An enemy city's buildings: each bomber has a 35% chance to destroy one building.
+  - A bridge, on either side: each bomber has a 50% chance to bring it down.
+- **Move to a new base:** to another airfield city you hold, or onto one of your carriers with room, within range.
+- **Scout:** as before.
+
+**The air war, each turn, before anything else.**
+1. Fighter patrols whose areas overlap fight an air battle, like a meeting battle on land.
+2. A square is held by a side if only that side's surviving fighters patrol over it, and contested if both do.
+3. Bombers are intercepted by enemy fighters patrolling over their target. An interception is a single round of fire, not a full battle. Your fighters patrolling over the same square fly as escorts. Bombers are lost before escorts.
+4. Each anti-aircraft gun on the target has a 20% chance to shoot down a bomber.
+5. Surviving bombers drop their bombs.
+6. Scout planes can also be caught: each enemy fighter patrolling over their target has a 30% chance.
+
+**Air support.** In any battle on land or sea, the side holding the sky over that square adds 1 to every unit's hit number.
+
+**Bridges.** A bombed bridge works like a river square, so tanks cannot cross it. An engineer who stays on it for a turn rebuilds it.
+
+**Carriers.** Planes on a carrier move with it and fly missions from wherever it is. A carrier holds up to 4 planes.
 
 ## Economy, first version
 
@@ -292,17 +324,19 @@ These numbers are starting points for playtesting.
 - Artillery: 6 industry, 1 recruit, 2 turns. Needs a factory in that city.
 - Tank: 10 industry, 1 recruit, 2 turns. Needs a factory in that city.
 - Special forces: 8 industry, 2 recruits, 2 turns.
-- Scout plane: 8 industry, 1 recruit, 2 turns. Needs an airfield in that city.
-- Destroyer: 12 industry, 2 recruits, 2 turns. Needs a port.
-- Submarine: 12 industry, 2 recruits, 2 turns. Needs a port.
-- Transport: 8 industry, 1 recruit, 2 turns. Needs a port.
-- Carrier: 24 industry, 3 recruits, 4 turns. Needs a port.
+- Scout plane: 8 industry, 1 recruit, 2 gasoline, 2 turns. Needs an airfield in that city.
+- Fighter: 10 industry, 1 recruit, 3 gasoline, 2 turns. Needs an airfield.
+- Bomber: 14 industry, 1 recruit, 4 gasoline, 2 turns. Needs an airfield.
+- Destroyer: 12 industry, 2 recruits, 4 gasoline, 2 turns. Needs a port.
+- Submarine: 12 industry, 2 recruits, 4 gasoline, 2 turns. Needs a port.
+- Transport: 8 industry, 1 recruit, 3 gasoline, 2 turns. Needs a port.
+- Carrier: 24 industry, 3 recruits, 8 gasoline, 4 turns. Needs a port.
 
 **Buildings.** Factories, refineries, labs, and ports cost 12 industry. Airfields cost 15. Each takes 3 turns. Ports can only go in coastal cities.
 
 **Canceling.** Units and buildings can be canceled for a full refund in the turn they were ordered.
 
-**Gasoline.** Each scout plane mission uses 2 gasoline. Every ship uses gasoline each turn: 1 for destroyers, submarines, and transports, and 2 for carriers. Upkeep is paid after income. If there is not enough, gasoline drops to zero and ships cannot sail or bombard until upkeep can be covered again.
+**Gasoline.** Ships and planes cost gasoline once, when they are built. Missions and sailing are free after that.
 
 **Capturing cities.**
 - A city changes hands when the other side's ground units hold it. It keeps whatever buildings it has.
@@ -314,7 +348,7 @@ These numbers are starting points for playtesting.
 
 Each side starts with the mirror image of this army. South's squares are the same column, mirrored row.
 
-- **F2, capital:** 3 infantry, 1 anti-aircraft gun, and 1 scout plane.
+- **F2, capital:** 3 infantry, 1 anti-aircraft gun, 2 fighters, 1 bomber, and 1 scout plane.
 - **C3:** 2 infantry.
 - **L3:** 2 infantry, 2 tanks, 1 artillery, and 1 scout plane.
 - **O3:** 2 infantry, 1 tank, 1 engineer, and 1 special forces.
@@ -332,7 +366,7 @@ Each step ends with something playable to test on iPhone and computer.
 5. **Economy:** cities, buildings, manpower, industry, gasoline, and building new units. (Built.)
 6. **Sea and air:** built in two parts.
    - **6a, sea:** ports, ships, naval battles, transports, invasions, and shore bombardment. (Built.)
-   - **6b, air:** fighters, bombers, carriers' planes, and air control.
+   - **6b, air:** fighters, bombers, carriers' planes, and air control. (Built.)
 7. **Missiles and defenses.**
 8. **Science and research.**
 9. **Morale, government types, and victory conditions.**

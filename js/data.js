@@ -51,7 +51,10 @@ SF.UNIT_TYPES = {
   antiAir: { name: "anti-aircraft gun", plural: "anti-aircraft guns", move: 2, crossRiver: true, attack: 1, defense: 2, loss: 3 },
   // Air units are based in cities. They do not hold or block squares, and do
   // not fight in ground battles.
-  scoutPlane: { name: "scout plane", plural: "scout planes", air: true, loss: 7 },
+  // range: how far from its base a plane can fly a mission.
+  scoutPlane: { name: "scout plane", plural: "scout planes", air: true, attack: 0, defense: 1, loss: 0, range: 10 },
+  fighter: { name: "fighter", plural: "fighters", air: true, attack: 6, defense: 6, loss: 2, range: 6 },
+  bomber: { name: "bomber", plural: "bombers", air: true, attack: 1, defense: 2, loss: 1, range: 8 },
   // Ships move on ocean squares and dock in port cities you hold. Like
   // planes, they do not hold land squares.
   destroyer: { name: "destroyer", plural: "destroyers", naval: true, move: 4, attack: 5, defense: 5, loss: 3,
@@ -59,10 +62,10 @@ SF.UNIT_TYPES = {
   submarine: { name: "submarine", plural: "submarines", naval: true, move: 3, attack: 6, defense: 3, loss: 4,
     hunts: ["transport", "carrier"] },
   transport: { name: "transport", plural: "transports", naval: true, move: 4, attack: 0, defense: 1, loss: 1, capacity: 4 },
-  carrier: { name: "carrier", plural: "carriers", naval: true, move: 3, attack: 1, defense: 4, loss: 5 }
+  carrier: { name: "carrier", plural: "carriers", naval: true, move: 3, attack: 1, defense: 4, loss: 5, planes: 4 }
 };
 SF.UNIT_ORDER = ["infantry", "specialForces", "engineer", "tank", "artillery", "antiAir",
-  "destroyer", "submarine", "transport", "carrier", "scoutPlane"];
+  "destroyer", "submarine", "transport", "carrier", "fighter", "bomber", "scoutPlane"];
 
 // A unit gets this much extra attack and defense in a battle with a type it hunts.
 SF.HUNT_BONUS = 3;
@@ -70,8 +73,6 @@ SF.HUNT_BONUS = 3;
 SF.CARGO_SPACE = { tank: 2, artillery: 2 };
 // Units landing from the sea lose this much attack.
 SF.LANDING_PENALTY = 2;
-// Gasoline each ship uses every turn.
-SF.UPKEEP = { destroyer: 1, submarine: 1, transport: 1, carrier: 2 };
 // Destroyer shore bombardment: chance to destroy one unit, before terrain.
 SF.SHORE_BOMBARD_CHANCE = 0.4;
 
@@ -83,6 +84,16 @@ SF.SHORE_BOMBARD_CHANCE = 0.4;
 SF.SCOUT_RANGE = 10;         // squares from its base a scout plane can reach
 SF.SCOUT_RADIUS = 2;         // it sees a 5 by 5 area around its target
 SF.SCOUT_AA_CHANCE = 0.2;    // chance each enemy anti-aircraft gun in that area shoots it down
+SF.SCOUT_FIGHTER_CHANCE = 0.3; // chance each enemy fighter patrolling over its target catches it
+
+// Air power
+SF.PATROL_RADIUS = 1;        // a fighter patrol covers a 3 by 3 area
+SF.INTERCEPT_ROUNDS = 1;     // fighters get one pass at bombers they intercept
+SF.AA_CHANCE = 0.2;          // chance each anti-aircraft gun shoots down a bomber over its square
+SF.AIR_SUPPORT = 1;          // battle bonus for the side that holds the sky over a square
+SF.BOMB_TROOPS = 0.5;        // chance per bomber to destroy one unit, before terrain
+SF.BOMB_BUILDING = 0.35;     // chance per bomber to destroy one building in a city
+SF.BOMB_BRIDGE = 0.5;        // chance per bomber to destroy a bridge
 
 // Battles
 SF.BATTLE_ROUNDS = 3;
@@ -102,7 +113,7 @@ SF.MOVE_COST = { plains: 1, city: 1, bridge: 1, forest: 2, mountains: 3, river: 
 
 // North's starting army. South gets the mirror image.
 SF.STARTING_ARMY = [
-  ["F2", { infantry: 3, antiAir: 1, scoutPlane: 1 }],
+  ["F2", { infantry: 3, antiAir: 1, scoutPlane: 1, fighter: 2, bomber: 1 }],
   ["C3", { infantry: 2 }],
   ["L3", { infantry: 2, tank: 2, artillery: 1, scoutPlane: 1 }],
   ["O3", { infantry: 2, tank: 1, engineer: 1, specialForces: 1 }],
