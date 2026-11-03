@@ -41,14 +41,28 @@ SF.NOTES = {
 
 // Movement points each turn, and whether the unit can enter river squares.
 SF.UNIT_TYPES = {
-  infantry: { name: "infantry", plural: "infantry", move: 2, crossRiver: true },
-  specialForces: { name: "special forces", plural: "special forces", move: 2, crossRiver: true },
-  engineer: { name: "engineer", plural: "engineers", move: 2, crossRiver: true },
-  tank: { name: "tank", plural: "tanks", move: 3, crossRiver: false },
-  artillery: { name: "artillery", plural: "artillery", move: 2, crossRiver: true },
-  antiAir: { name: "anti-aircraft gun", plural: "anti-aircraft guns", move: 2, crossRiver: true }
+  // attack and defense: chance in 10 to hit each battle round.
+  // loss: lower numbers are lost first when a side takes hits.
+  infantry: { name: "infantry", plural: "infantry", move: 2, crossRiver: true, attack: 3, defense: 4, rough: true, loss: 1 },
+  specialForces: { name: "special forces", plural: "special forces", move: 2, crossRiver: true, attack: 7, defense: 5, rough: true, loss: 6 },
+  engineer: { name: "engineer", plural: "engineers", move: 2, crossRiver: true, attack: 1, defense: 2, loss: 2 },
+  tank: { name: "tank", plural: "tanks", move: 3, crossRiver: false, attack: 6, defense: 3, loss: 5 },
+  artillery: { name: "artillery", plural: "artillery", move: 2, crossRiver: true, attack: 2, defense: 2, loss: 4, bombardRange: 2 },
+  antiAir: { name: "anti-aircraft gun", plural: "anti-aircraft guns", move: 2, crossRiver: true, attack: 1, defense: 2, loss: 3 }
 };
 SF.UNIT_ORDER = ["infantry", "specialForces", "engineer", "tank", "artillery", "antiAir"];
+
+// Battles
+SF.BATTLE_ROUNDS = 3;
+// Added to every defender's defense on that terrain.
+SF.DEFENSE_BONUS = { plains: 0, bridge: 0, river: 1, forest: 1, city: 3, mountains: 4 };
+// Extra defense for infantry and special forces in rough ground.
+SF.ROUGH_BONUS = { forest: 1, city: 1, mountains: 1 };
+// Added to a tank's attack, by the terrain it attacks into.
+SF.TANK_ATTACK = { plains: 1, bridge: 0, river: 0, forest: -2, city: -3, mountains: -5 };
+// Artillery bombardment: chance to destroy one unit, before terrain.
+SF.BOMBARD_CHANCE = 0.5;
+SF.BOMBARD_TERRAIN = { plains: 0, bridge: 0, river: 0.05, forest: 0.1, city: 0.15, mountains: 0.25 };
 
 // Cost to enter a square. A unit with any movement left can always enter one
 // more square, even if it costs more than it has left.

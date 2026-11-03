@@ -191,7 +191,40 @@ These numbers are starting points for playtesting.
 - Tanks cannot enter river squares, only bridges.
 - Units cannot enter ocean squares or squares holding enemy units.
 - Units moving together use the slowest unit's reach.
-- If both sides' moves end on the same square, both moves are stopped for now. Combat replaces this in step 3.
+- Units can move onto a square holding enemy units. That is an attack, and the move ends there.
+
+## Battles, first version
+
+These numbers are starting points for playtesting.
+
+**Unit strength.** Each unit has an attack and a defense number. Each battle round, every unit has that many chances in 10 of scoring a hit, capped at 9 in 10 and never below 1 in 20.
+
+- Infantry: attack 3, defense 4.
+- Special forces: attack 7, defense 5.
+- Engineers: attack 1, defense 2.
+- Tanks: attack 6, defense 3.
+- Artillery: attack 2, defense 2, plus bombardment.
+- Anti-aircraft guns: attack 1, defense 2.
+
+**Terrain.**
+- Defenders add 1 in forest and on river squares, 3 in cities, and 4 in mountains.
+- Infantry and special forces add 1 more in forest, cities, and mountains.
+- Tanks add 1 to attack on plains, and lose 2 attacking into forest, 3 into cities, and 5 into mountains.
+
+**How a battle works.**
+- A battle lasts up to 3 rounds. Both sides fire at once each round.
+- Each hit destroys one unit. Cheaper units are lost first: infantry, then engineers, anti-aircraft guns, artillery, tanks, and special forces.
+- The attacker takes the square only by destroying every defender. If any defenders survive, the attackers fall back to where they started.
+- Friendly units moving into a square under attack join the defense.
+- If both sides move into the same empty square, they fight a meeting battle with no terrain defense bonus. The winner takes the square. If both survive, both fall back.
+- If two armies try to swap squares, they meet halfway and fight, and the survivors return home.
+- Units falling back to a square the enemy took that turn are cut off and lost.
+- Before you commit, the game shows the estimated chance to win, from 1% to 99%. Nothing is ever certain.
+
+**Artillery bombardment.**
+- Artillery can stay put and fire at an enemy square up to 2 squares away.
+- Bombardment happens before any movement or battles.
+- Each gun has a 50% chance to destroy one unit, lowered by terrain: 5 points on river squares, 10 in forest, 15 in cities, and 25 in mountains.
 
 ## Starting armies, first version
 
@@ -209,7 +242,7 @@ Each step ends with something playable to test on iPhone and computer.
 
 1. **The map:** the 16 by 16 grid, terrain, cities, and ownership, with accessible square descriptions and quick navigation. (Built.)
 2. **Units and movement:** starting armies, giving move orders, terrain movement rules, and the lock-in button, played pass-the-phone or against an AI that only defends. (Built.)
-3. **Combat:** battles when enemies meet, odds announced before attacking, and turn reports.
+3. **Combat:** battles when enemies meet, odds announced before attacking, and turn reports. (Built.)
 4. **Fog of war:** hidden enemy units, adjacent vision, and scout planes.
 5. **Economy:** cities, buildings, manpower, industry, gasoline, and building new units.
 6. **Sea and air:** ships, transports, invasions, fighters, bombers, and air control.
