@@ -20,9 +20,10 @@
     factory: { name: "factory", plural: "factories", job: "factory", cost: 12, turns: 3 },
     refinery: { name: "refinery", plural: "refineries", job: "refinery", cost: 12, turns: 3 },
     lab: { name: "lab", plural: "labs", job: "lab", cost: 12, turns: 3 },
-    airfield: { name: "airfield", plural: "airfields", cost: 15, turns: 3 }
+    airfield: { name: "airfield", plural: "airfields", cost: 15, turns: 3 },
+    port: { name: "port", plural: "ports", cost: 12, turns: 3, coastal: true }
   };
-  SF.BUILDING_ORDER = ["factory", "refinery", "lab", "airfield"];
+  SF.BUILDING_ORDER = ["factory", "refinery", "lab", "airfield", "port"];
 
   // "a factory", "an airfield"
   SF.withArticle = function (word) { return (/^[aeiou]/i.test(word) ? "an " : "a ") + word; };
@@ -47,7 +48,11 @@
     artillery: { industry: 6, recruits: 1, turns: 2, needs: "factory" },
     tank: { industry: 10, recruits: 1, turns: 2, needs: "factory" },
     specialForces: { industry: 8, recruits: 2, turns: 2 },
-    scoutPlane: { industry: 8, recruits: 1, turns: 2, needs: "airfield" }
+    scoutPlane: { industry: 8, recruits: 1, turns: 2, needs: "airfield" },
+    destroyer: { industry: 12, recruits: 2, turns: 2, needs: "port" },
+    submarine: { industry: 12, recruits: 2, turns: 2, needs: "port" },
+    transport: { industry: 8, recruits: 1, turns: 2, needs: "port" },
+    carrier: { industry: 24, recruits: 3, turns: 4, needs: "port" }
   };
 
   SF.START_BUDGET = 10;   // starting buildings, chosen before the game
@@ -57,7 +62,7 @@
     L3: { factory: 1, refinery: 1 },
     O3: { factory: 1 },
     A5: { lab: 1 },
-    E6: { refinery: 1 }
+    E6: { port: 1 }
   };
   SF.START_STOCK = { industry: 20, gasoline: 10, science: 0, recruits: 6 };
   SF.DEFAULT_WORKERS = { factory: 9, refinery: 3, lab: 6, recruit: 3 };
@@ -116,6 +121,7 @@
       var used = 0;
       SF.BUILDING_ORDER.forEach(function (k) { used += plan[id][k] || 0; });
       if (used > homeInfo(id).slots) bad = id + " only has room for " + homeInfo(id).slots + " buildings.";
+      if ((plan[id].port || 0) > 0 && !SF.isCoastal(sq)) bad = "Ports can only go in coastal cities. " + id + " is inland.";
     });
     return bad;
   };
@@ -224,6 +230,7 @@
     var c = state.cities[city], cost = SF.UNIT_COST[type], e = state.econ[owner];
     if (!c || c.owner !== owner) return "You do not hold " + city + ".";
     if (cost.needs && !c.buildings[cost.needs]) return "Needs " + SF.withArticle(SF.BUILDINGS[cost.needs].name) + " in this city.";
+    if (SF.UNIT_TYPES[type].naval && SF.blockaded(state, city)) return "The port is blockaded by enemy warships.";
     if (e.industry < cost.industry) return "Needs " + cost.industry + " industry. You have " + e.industry + ".";
     if (e.recruits < cost.recruits) return "Needs " + cost.recruits + " recruits. You have " + e.recruits + ".";
     return null;
@@ -233,6 +240,7 @@
     var c = state.cities[city], b = SF.BUILDINGS[type], e = state.econ[owner];
     if (!c || c.owner !== owner) return "You do not hold " + city + ".";
     if (SF.slotsUsed(state, city) >= homeInfo(city).slots) return "No room for more buildings here.";
+    if (b.coastal && !SF.isCoastal(SF.sq(city))) return "Only coastal cities can have a port.";
     if (e.industry < b.cost) return "Needs " + b.cost + " industry. You have " + e.industry + ".";
     return null;
   };
@@ -312,11 +320,38 @@
     state.projects = still;
   };
 
+  // Gasoline all of a side's ships use each turn.
+  SF.upkeep = function (state, owner) {
+    var n = 0;
+    state.units.forEach(function (u) { if (u.owner === owner) n += SF.UPKEEP[u.type] || 0; });
+    return n;
+  };
+
+  // Income comes in, then ships use their gasoline. If there is not enough,
+  // the fleet is out of fuel and cannot sail next turn.
   SF.collectIncome = function (state, events) {
     [0, 1].forEach(function (owner) {
       var inc = SF.income(state, owner), e = state.econ[owner];
       SF.RESOURCES.forEach(function (r) { e[r] += inc[r]; });
-      events.push({ type: "income", owner: owner, income: inc });
+      var up = SF.upkeep(state, owner);
+      if (e.gasoline >= up) {
+        e.gasoline -= up;
+        e.noFuel = false;
+      } else {
+        e.gasoline = 0;
+        e.noFuel = true;
+      }
+      events.push({ type: "income", owner: owner, income: inc, upkeep: up, noFuel: e.noFuel });
+    });
+  };
+
+  // A port city is blockaded when enemy warships sit on a square touching it.
+  SF.blockaded = function (state, city) {
+    var owner = state.cities[city] ? state.cities[city].owner : null;
+    return SF.around(city, 1).some(function (id) {
+      return state.units.some(function (u) {
+        return u.at === id && u.owner !== owner && SF.isNaval(u) && u.type !== "transport" && !u.aboard;
+      });
     });
   };
 

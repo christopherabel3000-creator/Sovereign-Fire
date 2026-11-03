@@ -5,7 +5,7 @@
   "use strict";
 
   var SAVE_KEY = "sovereignFire.save";
-  var SAVE_VERSION = 3;
+  var SAVE_VERSION = 4;
   var state = null;
   var selected = null;     // id of the selected square
   var buttons = {};        // map square buttons by id
@@ -45,8 +45,20 @@
     return e;
   }
   function seenEnemies(id) { return SF.visibleEnemies(state, me(), id, vis); }
-  function seenEnemyGround(id) { return seenEnemies(id).filter(function (u) { return !SF.isAir(u); }); }
-  function knownEnemy(id) { return SF.knownOccupant(state, me(), id, vis) === foe(); }
+  function layerOf(id) { return SF.sq(id).terrain.key === "ocean" ? "sea" : "ground"; }
+  // Enemy units you can see that would fight for a square: ships at sea, troops on land.
+  function seenDefenders(id) {
+    return seenEnemies(id).filter(layerOf(id) === "sea" ? SF.isNaval : SF.isGround);
+  }
+  function knownEnemy(id) { return SF.knownOccupant(state, me(), id, vis, layerOf(id)) === foe(); }
+  // "your 1 destroyer and 1 transport, carrying 2 infantry"
+  function stackText(units) {
+    var top = units.filter(function (u) { return !SF.isCargo(u); });
+    var cargo = units.filter(SF.isCargo);
+    var text = SF.describeUnits(top);
+    if (cargo.length) text += (top.length ? ", carrying " : "") + SF.describeUnits(cargo);
+    return text;
+  }
   function isHidden(id) { return !vis.wide[id]; }
 
   function announce(text) {
@@ -105,6 +117,7 @@
       if (o.kind === "bombard") t[o.to] = t[o.to] || "bombard";
       else if (o.kind === "scout") t[o.to] = t[o.to] || "scout";
       else t[o.to] = knownEnemy(o.to) ? "attack" : "move";
+      if (o.landAt) t[o.landAt] = knownEnemy(o.landAt) ? "attack" : "landing";
     });
     return t;
   }
@@ -113,7 +126,8 @@
     move: "your units moving here",
     attack: "your attack target",
     bombard: "your artillery firing here",
-    scout: "your scout plane flying here"
+    scout: "your scout plane flying here",
+    landing: "your troops landing here"
   };
 
   function squareLabel(sq, targets) {
@@ -124,7 +138,7 @@
     // "your" or "enemy" in front of the units already says whose land it is.
     var sameSide = (terr === "yours" && mine.length) || (terr === "enemy" && theirs.length);
     if (terr && !sameSide) parts.push(terr);
-    if (mine.length) parts.push("your " + SF.describeUnits(mine));
+    if (mine.length) parts.push("your " + stackText(mine));
     if (theirs.length) parts.push("enemy " + SF.describeUnits(theirs));
     if (isHidden(sq.id)) parts.push("hidden");
     if (targets[sq.id]) parts.push(TARGET_TEXT[targets[sq.id]]);
@@ -193,7 +207,15 @@
   function orderVerb(o) {
     if (o.kind === "bombard") return "firing at " + o.to;
     if (o.kind === "scout") return "scouting " + o.to;
+    if (o.kind === "sail") {
+      var text = (knownEnemy(o.to) ? "attacking " : "sailing to ") + o.to;
+      var loading = state.units.filter(function (u) { return (o.cargoIds || []).indexOf(u.id) !== -1; });
+      if (loading.length) text += ", loading " + SF.describeUnits(loading);
+      if (o.landAt) text += ", landing troops at " + o.landAt;
+      return text;
+    }
     if (knownEnemy(o.to)) return "attacking " + o.to;
+    if (layerOf(o.to) === "sea") return "boarding the transport at " + o.to;
     return "moving to " + o.to;
   }
 
@@ -230,7 +252,7 @@
       box.appendChild(el("p", "Hidden. You cannot see what enemy units are here."));
     } else {
       var theirs = seenEnemies(sq.id);
-      if (theirs.length) box.appendChild(el("p", "Enemy units: " + SF.describeUnits(theirs) + "."));
+      if (theirs.length) box.appendChild(el("p", "Enemy units: " + stackText(theirs) + "."));
     }
 
     var mine = SF.unitsAt(state, sq.id, me());
@@ -242,6 +264,11 @@
       var ul = el("ul", undefined, "plain");
       var waiting = unorderedAt(sq.id);
       if (waiting.length) ul.appendChild(el("li", "Awaiting orders: " + SF.describeUnits(waiting) + "."));
+      mine.filter(function (u) { return u.type === "transport"; }).forEach(function (t) {
+        var aboard = SF.cargoOf(state, t);
+        ul.appendChild(el("li", "Transport: " + (aboard.length ? "carrying " + SF.describeUnits(aboard) : "empty") +
+          ", room for " + SF.roomOn(state, t) + " more."));
+      });
       leaving.forEach(function (o) {
         var li = el("li");
         li.appendChild(el("span", orderText(o, false) + "."));
@@ -259,9 +286,12 @@
     waitingNow.forEach(function (u) { (byType[u.type] = byType[u.type] || []).push(u); });
     var city = state.cities[sq.id];
     if (city && city.owner === me()) renderCityPanel(box, sq);
-    var ground = waitingNow.filter(function (u) { return !SF.isAir(u); });
+    var ground = waitingNow.filter(function (u) { return !SF.isAir(u) && !SF.isNaval(u); });
+    var ships = waitingNow.filter(SF.isNaval);
     if (ground.length) renderOrderForm(box, sq, ground);
+    if (ships.length) renderSeaForm(box, sq, ships, waitingNow.filter(SF.isGround));
     renderBombardForm(box, sq, byType.artillery || []);
+    renderBombardForm(box, sq, byType.destroyer || []);
     renderScoutForm(box, sq, byType.scoutPlane || []);
   }
 
@@ -280,6 +310,9 @@
     var room = info.slots - SF.slotsUsed(state, id);
     box.appendChild(el("p", "Manpower " + Math.floor(info.pop * rate) + " a turn. Buildings: " +
       buildingsText(c.buildings) + ". Room for " + room + " more."));
+    if (c.buildings.port && SF.blockaded(state, id)) {
+      box.appendChild(el("p", "Blockaded. Enemy warships next to the port stop it building ships."));
+    }
     if (rate < 1) {
       box.appendChild(el("p", "Recently captured. Producing at " + Math.round(rate * 100) +
         "% until turn " + (c.captured + SF.CAPTURE_TURNS) + "."));
@@ -419,7 +452,7 @@
       var units = chosenUnits();
       var types = [];
       units.forEach(function (u) { if (types.indexOf(u.type) === -1) types.push(u.type); });
-      var ids = SF.reachable(state, me(), sq.id, types);
+      var ids = SF.reachable(state, me(), units);
       dest.innerHTML = "";
       odds = {};
       if (!units.length || !ids.length) {
@@ -434,9 +467,15 @@
         var s2 = SF.sq(id);
         var terr = territory(s2);
         var text = id + ", " + SF.terrainName(s2) + (terr ? ", " + terr : "");
-        if (knownEnemy(id)) {
-          odds[id] = SF.attackOdds(state, me(), units, id);
-          text += ", attack " + SF.describeUnits(seenEnemyGround(id)) + ", about " + odds[id] + "% to win";
+        var landing = units.some(SF.isCargo);
+        if (layerOf(id) === "sea") {
+          text = id + ", board your transport";
+        } else if (knownEnemy(id)) {
+          odds[id] = SF.attackOdds(state, me(), units, id, landing);
+          text += ", " + (landing ? "land and attack " : "attack ") + SF.describeUnits(seenDefenders(id)) +
+            ", about " + odds[id] + "% to win";
+        } else if (landing) {
+          text += ", land here" + (isHidden(id) ? ", hidden" : "");
         } else if (isHidden(id)) {
           text += ", hidden";
         }
@@ -462,11 +501,15 @@
 
   function renderBombardForm(box, sq, guns) {
     if (!guns.length) return;
-    var targets = SF.bombardTargets(state, me(), sq.id);
+    var type = guns[0].type;
+    var naval = SF.UNIT_TYPES[type].naval;
+    if (naval && state.econ[me()].noFuel) return;
+    var targets = SF.bombardTargets(state, me(), sq.id, type);
     if (!targets.length) return;
-    box.appendChild(el("h3", "Artillery bombardment"));
+    var plural = SF.UNIT_TYPES[type].plural;
+    box.appendChild(el("h3", naval ? "Shore bombardment" : "Artillery bombardment"));
     var form = el("form", undefined, "order-form");
-    var countLabel = el("label", "Artillery to fire, " + guns.length + " available");
+    var countLabel = el("label", capitalize(plural) + " to fire, " + guns.length + " available");
     var count = document.createElement("select");
     for (var i = 1; i <= guns.length; i++) {
       var o = el("option", String(i));
@@ -480,9 +523,9 @@
     var tLabel = el("label", "Target");
     var target = document.createElement("select");
     targets.forEach(function (id) {
-      var pct = Math.round(SF.bombardChance(id) * 100);
+      var pct = Math.round(SF.bombardChance(id, type) * 100);
       var opt = el("option", id + ", " + SF.terrainName(SF.sq(id)) + ", enemy " +
-        SF.describeUnits(seenEnemyGround(id)) + ", " + pct + "% per gun to destroy a unit");
+        SF.describeUnits(seenDefenders(id)) + ", " + pct + "% per gun to destroy a unit");
       opt.value = id;
       target.appendChild(opt);
     });
@@ -499,6 +542,178 @@
       SF.addBombard(state, me(), use.map(function (u) { return u.id; }), target.value);
       afterOrder("Ordered " + SF.describeUnits(use) + " to fire at " + target.value + ".");
     });
+    box.appendChild(form);
+  }
+
+  // Sail ships, and with transports, load troops in port and land them.
+  function renderSeaForm(box, sq, ships, troopsHere) {
+    box.appendChild(el("h3", "Give a sea order"));
+    if (state.econ[me()].noFuel) {
+      box.appendChild(el("p", "Out of gasoline. Ships cannot sail until you have enough for upkeep."));
+      return;
+    }
+    var form = el("form", undefined, "order-form");
+    var byType = {};
+    ships.forEach(function (u) { (byType[u.type] = byType[u.type] || []).push(u); });
+
+    function pickerSet(list, labelFor, startAll, onChange) {
+      var out = [];
+      var groups = {};
+      list.forEach(function (u) { (groups[u.type] = groups[u.type] || []).push(u); });
+      SF.UNIT_ORDER.forEach(function (type) {
+        var g = groups[type];
+        if (!g) return;
+        var label = el("label", labelFor(type, g.length));
+        var sel = document.createElement("select");
+        for (var i = 0; i <= g.length; i++) {
+          var o = el("option", String(i));
+          o.value = String(i);
+          sel.appendChild(o);
+        }
+        sel.value = String(startAll ? g.length : 0);
+        sel.addEventListener("change", onChange);
+        label.appendChild(sel);
+        form.appendChild(label);
+        out.push({ units: g, select: sel });
+      });
+      return out;
+    }
+    function chosen(set) {
+      var out = [];
+      set.forEach(function (p) { out = out.concat(p.units.slice(0, parseInt(p.select.value, 10))); });
+      return out;
+    }
+
+    var shipPickers = pickerSet(ships, function (type, n) {
+      return capitalize(SF.UNIT_TYPES[type].plural) + ", " + n + " available";
+    }, true, refresh);
+
+    // Troops in this port can be loaded onto transports as they leave.
+    var loadPickers = [];
+    if (troopsHere.length && SF.sq(sq.id).terrain.key !== "ocean") {
+      loadPickers = pickerSet(troopsHere, function (type, n) {
+        return "Load " + SF.UNIT_TYPES[type].plural + ", " + n + " here";
+      }, false, refresh);
+    }
+
+    var destLabel = el("label", "Destination");
+    var dest = document.createElement("select");
+    dest.addEventListener("change", refreshLanding);
+    destLabel.appendChild(dest);
+    form.appendChild(destLabel);
+
+    var landLabel = el("label", "Land troops at");
+    var land = document.createElement("select");
+    landLabel.appendChild(land);
+    form.appendChild(landLabel);
+
+    var info = el("p");
+    form.appendChild(info);
+    var err = el("p");
+    err.setAttribute("role", "alert");
+    form.appendChild(err);
+    var submit = el("button", "Give sea order", "act primary");
+    submit.type = "submit";
+    form.appendChild(submit);
+
+    var odds = {};
+
+    function aboardNow(group) {
+      var cargo = [];
+      group.filter(function (u) { return u.type === "transport"; }).forEach(function (t) {
+        cargo = cargo.concat(SF.cargoOf(state, t));
+      });
+      return cargo.concat(chosen(loadPickers));
+    }
+
+    function refresh() {
+      var keep = dest.value;
+      var group = chosen(shipPickers);
+      var ids = SF.reachable(state, me(), group);
+      dest.innerHTML = "";
+      odds = {};
+      var transports = group.filter(function (u) { return u.type === "transport"; });
+      var room = transports.reduce(function (n, t) { return n + SF.roomOn(state, t); }, 0);
+      var loading = chosen(loadPickers);
+      info.textContent = transports.length ? "Room on the transports: " + room + ". Loading takes " +
+        SF.spaceOf(loading) + ". Tanks and artillery take 2 spaces." : "";
+      if (!group.length || !ids.length) {
+        dest.appendChild(el("option", group.length ? "No squares in reach" : "Choose some ships first"));
+        dest.disabled = true;
+        submit.disabled = true;
+        refreshLanding();
+        return;
+      }
+      dest.disabled = false;
+      submit.disabled = false;
+      ids.forEach(function (id) {
+        var text = id + ", " + SF.terrainName(SF.sq(id));
+        if (knownEnemy(id)) {
+          odds[id] = SF.attackOdds(state, me(), group, id);
+          text += ", attack " + SF.describeUnits(seenDefenders(id)) + ", about " + odds[id] + "% to win";
+        } else if (isHidden(id)) {
+          text += ", hidden";
+        }
+        var opt = el("option", text);
+        opt.value = id;
+        dest.appendChild(opt);
+      });
+      if (ids.indexOf(keep) !== -1) dest.value = keep;
+      refreshLanding();
+    }
+
+    function refreshLanding() {
+      var keep = land.value;
+      land.innerHTML = "";
+      var none = el("option", "Do not land");
+      none.value = "";
+      land.appendChild(none);
+      var group = chosen(shipPickers);
+      var troops = aboardNow(group);
+      if (dest.disabled || !troops.length || layerOf(dest.value) !== "sea") {
+        landLabel.hidden = true;
+        return;
+      }
+      landLabel.hidden = false;
+      SF.landingSquares(dest.value).forEach(function (id) {
+        var s2 = SF.sq(id);
+        if (s2.terrain.key === "river" && troops.some(function (u) { return !SF.UNIT_TYPES[u.type].crossRiver; })) return;
+        var terr = territory(s2);
+        var text = id + ", " + SF.terrainName(s2) + (terr ? ", " + terr : "");
+        if (knownEnemy(id)) {
+          var pct = SF.attackOdds(state, me(), troops, id, true);
+          text += ", land and attack " + SF.describeUnits(seenDefenders(id)) + ", about " + pct + "% to win";
+        } else if (isHidden(id)) {
+          text += ", hidden";
+        }
+        var opt = el("option", text);
+        opt.value = id;
+        land.appendChild(opt);
+      });
+      if ([].some.call(land.options, function (o) { return o.value === keep; })) land.value = keep;
+    }
+    refresh();
+
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var group = chosen(shipPickers);
+      if (!group.length || dest.disabled) return;
+      var loading = chosen(loadPickers);
+      var landAt = landLabel.hidden ? null : (land.value || null);
+      try {
+        SF.addSail(state, me(), group.map(function (u) { return u.id; }), dest.value,
+          loading.map(function (u) { return u.id; }), landAt);
+      } catch (x) {
+        err.textContent = x.message + ".";
+        return;
+      }
+      var msg = "Ordered " + SF.describeUnits(group) + " to " + (odds[dest.value] !== undefined ?
+        "attack " + dest.value + ", about " + odds[dest.value] + "% to win" : "sail to " + dest.value);
+      if (loading.length) msg += ", loading " + SF.describeUnits(loading);
+      if (landAt) msg += ", landing troops at " + landAt;
+      afterOrder(msg + ".");
+    });
+
     box.appendChild(form);
   }
 
@@ -605,12 +820,14 @@
       else if (iWon === false) s += "The enemy won the fight. ";
       else s += "Neither side broke through, and both fell back. ";
     } else if (mineFirst) {
-      s = "You attacked " + b.at + " with " + myWhat + " against " + theirWhat + ". ";
+      s = (b.landing ? "You landed troops at " + b.at + ": " + myWhat + " against " + theirWhat + ". " :
+        "You attacked " + b.at + " with " + myWhat + " against " + theirWhat + ". ");
       if (b.result === "attacker") s += "You took " + b.at + ". ";
       else if (b.result === "both destroyed") s += "Both sides were destroyed, and " + b.at + " is empty. ";
       else s += "The enemy held, and your attackers fell back. ";
     } else {
-      s = "The enemy attacked " + b.at + " with " + theirWhat + " against your " + myWhat + ". ";
+      s = (b.landing ? "Enemy troops landed at " + b.at + ": " + theirWhat + " against your " + myWhat + ". " :
+        "The enemy attacked " + b.at + " with " + theirWhat + " against your " + myWhat + ". ");
       if (b.result === "attacker") s += "The enemy took " + b.at + ". ";
       else if (b.result === "both destroyed") s += "Both sides were destroyed, and " + b.at + " is empty. ";
       else s += "You held, and the attackers fell back. ";
@@ -629,7 +846,7 @@
           return "Your " + e.what + " at " + e.from + " fired on " + e.at +
             (e.killed ? " and destroyed " + e.killed + "." : " and missed.");
         }
-        return "Enemy artillery fired on " + e.at + (vis.wide[e.from] ? " from " + e.from : "") +
+        return (e.naval ? "Enemy warships" : "Enemy artillery") + " fired on " + e.at + (vis.wide[e.from] ? " from " + e.from : "") +
           (e.killed ? " and destroyed your " + e.killed + "." : " and missed.");
       case "battle":
         return battleText(e, v);
@@ -637,12 +854,24 @@
         if (mine) return "Your " + e.what + " fell back to " + e.at + ", but the enemy had taken it. They were cut off and lost.";
         return "Enemy " + e.what + " were cut off at " + e.at + " and destroyed.";
       case "move":
-        if (mine) return "Your " + e.what + " moved from " + e.from + " to " + e.to + ".";
+        if (mine) {
+          if (e.landing) return "Your " + e.what + " landed at " + e.to + ".";
+          return "Your " + e.what + (layerOf(e.to) === "sea" || layerOf(e.from) === "sea" ? " sailed" : " moved") +
+            " from " + e.from + " to " + e.to + ".";
+        }
         var seen = state.units.filter(function (u) {
           return e.unitIds.indexOf(u.id) !== -1 && SF.canSee(vis, u);
         });
         if (!seen.length) return null;
+        if (e.landing) return "Enemy " + SF.describeUnits(seen) + " landed at " + e.to + ".";
         return "Enemy " + SF.describeUnits(seen) + " moved to " + e.to + (vis.wide[e.from] ? " from " + e.from : "") + ".";
+      case "cargoLost":
+        if (mine) return "Your transport sank at " + e.at + " with " + e.what + " aboard.";
+        return null;
+      case "boarded":
+        return mine ? "Your " + e.what + " boarded the transport at " + e.at + "." : null;
+      case "boardFailed":
+        return mine ? "Your " + e.what + " could not board at " + e.at + ". The transport had moved or was full." : null;
       case "scout":
         if (mine) {
           return e.shotDown ?
@@ -665,10 +894,13 @@
           (e.lost.length ? " Production there was lost: " + e.lost.join(", ") + "." : "");
       case "income":
         if (!mine) return null;
-        return "Income: " + resourceList(e.income) + ".";
+        var t = "Income: " + resourceList(e.income) + ".";
+        if (e.upkeep) t += " Ships used " + e.upkeep + " gasoline.";
+        if (e.noFuel) t += " You ran out of gasoline. Ships cannot sail or bombard until you can cover their upkeep.";
+        return t;
       case "planesLost":
-        if (mine) return "Your " + e.what + " at " + e.at + (startsOne(e.what) ? " was" : " were") + " destroyed on the ground.";
-        return "You destroyed enemy " + e.what + " on the ground at " + e.at + ".";
+        if (mine) return "Your " + e.what + " at " + e.at + (startsOne(e.what) ? " was" : " were") + " destroyed when the city fell.";
+        return "You destroyed enemy " + e.what + " at " + e.at + " when you took the city.";
     }
     return null;
   }
@@ -785,6 +1017,9 @@
     var mp = SF.manpower(state, me());
     box.appendChild(el("p", "Stockpile: " + resourceList(e) + "."));
     box.appendChild(el("p", "Each turn: " + resourceList(inc) + ", from " + mp + " manpower."));
+    var up = SF.upkeep(state, me());
+    if (up) box.appendChild(el("p", "Ships use " + up + " gasoline a turn."));
+    if (e.noFuel) box.appendChild(el("p", "Out of gasoline. Ships cannot sail or bombard until you can cover their upkeep."));
 
     box.appendChild(el("h3", "Workforce"));
     var form = el("form", undefined, "order-form");

@@ -34,33 +34,57 @@
     return state;
   };
 
+  // ---------- Kinds of units ----------
+
   function isAir(u) { return !!SF.UNIT_TYPES[u.type].air; }
+  function isNaval(u) { return !!SF.UNIT_TYPES[u.type].naval; }
+  function isCargo(u) { return u.aboard !== undefined && u.aboard !== null; }
+  // Ground units that hold the square they are on.
+  function isGround(u) { return !isAir(u) && !isNaval(u) && !isCargo(u); }
+  // Ships on the water, not docked cargo.
+  function isShip(u) { return isNaval(u); }
   SF.isAir = isAir;
+  SF.isNaval = isNaval;
+  SF.isCargo = isCargo;
+  SF.isGround = isGround;
 
   SF.unitsAt = function (state, id, owner) {
     return state.units.filter(function (u) {
       return u.at === id && (owner === undefined || u.owner === owner);
     });
   };
+  SF.groundAt = function (state, id, owner) { return SF.unitsAt(state, id, owner).filter(isGround); };
+  SF.shipsAt = function (state, id, owner) { return SF.unitsAt(state, id, owner).filter(isShip); };
 
-  SF.groundAt = function (state, id, owner) {
-    return SF.unitsAt(state, id, owner).filter(function (u) { return !isAir(u); });
-  };
-
-  // Who has ground units on a square right now, or null. Planes in a city
-  // do not hold it.
-  SF.occupant = function (state, id) {
+  function firstOwner(state, id, test) {
     for (var i = 0; i < state.units.length; i++) {
       var u = state.units[i];
-      if (u.at === id && !isAir(u)) return u.owner;
+      if (u.at === id && test(u)) return u.owner;
     }
     return null;
+  }
+  // Who holds a square with ground units, or null.
+  SF.occupant = function (state, id) { return firstOwner(state, id, isGround); };
+  // Who has ships on a square, or null.
+  SF.seaOccupant = function (state, id) { return firstOwner(state, id, isShip); };
+
+  SF.cargoOf = function (state, transport) {
+    return state.units.filter(function (u) { return u.aboard === transport.id; });
+  };
+  SF.cargoSpace = function (u) { return SF.CARGO_SPACE[u.type] || 1; };
+  SF.spaceOf = function (units) {
+    return units.reduce(function (n, u) { return n + SF.cargoSpace(u); }, 0);
+  };
+  SF.roomOn = function (state, transport) {
+    return SF.UNIT_TYPES.transport.capacity - SF.spaceOf(SF.cargoOf(state, transport));
   };
 
   SF.orderFor = function (state, unitId) {
     for (var p = 0; p < 2; p++) {
       for (var i = 0; i < state.orders[p].length; i++) {
-        if (state.orders[p][i].unitIds.indexOf(unitId) !== -1) return state.orders[p][i];
+        var o = state.orders[p][i];
+        if (o.unitIds.indexOf(unitId) !== -1) return o;
+        if (o.cargoIds && o.cargoIds.indexOf(unitId) !== -1) return o;
       }
     }
     return null;
@@ -85,16 +109,29 @@
   }
   SF.around = around;
 
+  function isLand(id) { return SF.sq(id).terrain.key !== "ocean"; }
+
+  // A port city this side holds.
+  function ownPort(state, owner, id) {
+    var c = state.cities && state.cities[id];
+    return !!c && c.owner === owner && c.buildings.port > 0;
+  }
+  SF.ownPort = ownPort;
+
   // ---------- Vision ----------
 
-  // close: squares next to your ground units. Only these reveal special forces.
+  // close: squares next to your ground units and ships. Only these reveal
+  // special forces and submarines.
+  // sonar: squares within 2 of your destroyers. These reveal submarines too.
   // wide: close, plus your own land, squares next to cities you hold, and
   // scouted squares.
   SF.vision = function (state, owner) {
-    var close = {}, wide = {};
+    var close = {}, wide = {}, sonar = {};
     state.units.forEach(function (u) {
-      if (u.owner !== owner || isAir(u)) return;
+      if (u.owner !== owner || isAir(u) || isCargo(u)) return;
       around(u.at, 1).forEach(function (id) { close[id] = true; wide[id] = true; });
+      var s = SF.UNIT_TYPES[u.type].sonar;
+      if (s) around(u.at, s).forEach(function (id) { sonar[id] = true; });
     });
     // Your own land is watched by your people, and cities you hold see the
     // squares around them. Neither reveals special forces.
@@ -107,11 +144,14 @@
       }
     });
     ((state.scouted || [[], []])[owner] || []).forEach(function (id) { wide[id] = true; });
-    return { close: close, wide: wide };
+    return { close: close, wide: wide, sonar: sonar };
   };
 
   SF.canSee = function (vision, u) {
-    return u.type === "specialForces" ? !!vision.close[u.at] : !!vision.wide[u.at];
+    if (isCargo(u)) return false;
+    if (u.type === "specialForces") return !!vision.close[u.at];
+    if (u.type === "submarine") return !!vision.close[u.at] || !!vision.sonar[u.at];
+    return !!vision.wide[u.at];
   };
 
   // Enemy units on a square that this side can see.
@@ -120,22 +160,44 @@
     return SF.unitsAt(state, id, 1 - owner).filter(function (u) { return SF.canSee(vision, u); });
   };
 
-  // Who this side believes holds a square with ground units.
-  function knownOccupant(state, owner, id, vision) {
-    if (SF.groundAt(state, id, owner).length) return owner;
-    var seen = SF.visibleEnemies(state, owner, id, vision).filter(function (u) { return !isAir(u); });
-    return seen.length ? 1 - owner : null;
+  // Who this side believes holds a square, on land ("ground") or at sea ("sea").
+  function knownOccupant(state, owner, id, vision, layer) {
+    var test = layer === "sea" ? isShip : isGround;
+    if (SF.unitsAt(state, id, owner).some(test)) return owner;
+    return SF.visibleEnemies(state, owner, id, vision).some(test) ? 1 - owner : null;
   }
-  SF.knownOccupant = knownOccupant;
+  SF.knownOccupant = function (state, owner, id, vision, layer) {
+    return knownOccupant(state, owner, id, vision || SF.vision(state, owner), layer || "ground");
+  };
 
   // ---------- Movement ----------
 
-  // Squares one unit type can reach this turn, as far as this side knows.
-  // Enemy squares it can see can be attacked but not moved through. Hidden
-  // enemies are not known, so a move onto their square becomes a surprise battle.
-  function reachType(state, owner, fromId, type, vision) {
-    var t = SF.UNIT_TYPES[type];
+  // Own transports on a square with at least this much room.
+  function transportsWithRoom(state, owner, id, space) {
+    return SF.shipsAt(state, id, owner).filter(function (t) {
+      return t.type === "transport" && SF.roomOn(state, t) >= space;
+    });
+  }
+
+  // Squares one unit can reach this turn, as far as its side knows. Enemy
+  // squares it can see can be attacked but not moved through. Hidden enemies
+  // are not known, so a move onto their square becomes a surprise battle.
+  function reachUnit(state, owner, u, vision, groupSpace) {
+    var t = SF.UNIT_TYPES[u.type];
     var best = {};
+    var fromId = u.at;
+
+    // Units aboard a transport can only land on a square next to it.
+    if (isCargo(u)) {
+      SF.neighbors(SF.sq(fromId)).forEach(function (n) {
+        if (!isLand(n.id)) return;
+        if (n.terrain.key === "river" && !t.crossRiver) return;
+        best[n.id] = 0;
+      });
+      return best;
+    }
+
+    var naval = !!t.naval;
     best[fromId] = t.move;
     var queue = [fromId];
     while (queue.length) {
@@ -144,9 +206,32 @@
       if (rem <= 0) continue;
       SF.neighbors(SF.sq(id)).forEach(function (n) {
         var key = n.terrain.key;
-        if (key === "ocean") return;
+        if (naval) {
+          if (key !== "ocean") {
+            // Ships can dock in a port city you hold, which ends their move.
+            if (ownPort(state, owner, n.id) && best[n.id] === undefined) best[n.id] = 0;
+            return;
+          }
+          var seaOcc = knownOccupant(state, owner, n.id, vision, "sea");
+          if (seaOcc !== null && seaOcc !== owner) {
+            if (best[n.id] === undefined) best[n.id] = 0;
+            return;
+          }
+          var leftSea = rem - 1;
+          if (best[n.id] === undefined || leftSea > best[n.id]) {
+            best[n.id] = leftSea;
+            queue.push(n.id);
+          }
+          return;
+        }
+        if (key === "ocean") {
+          // Ground units can board your transport on a square next to them.
+          if (id === fromId && transportsWithRoom(state, owner, n.id, groupSpace).length &&
+              best[n.id] === undefined) best[n.id] = 0;
+          return;
+        }
         if (key === "river" && !t.crossRiver) return;
-        var occ = knownOccupant(state, owner, n.id, vision);
+        var occ = knownOccupant(state, owner, n.id, vision, "ground");
         if (occ !== null && occ !== owner) {
           if (best[n.id] === undefined) best[n.id] = 0;
           return;
@@ -162,12 +247,21 @@
     return best;
   }
 
-  // Squares a group of unit types can all reach, nearest first.
-  SF.reachable = function (state, owner, fromId, types) {
-    types = types.filter(function (t) { return !SF.UNIT_TYPES[t].air; });
-    if (!types.length) return [];
+  // Squares a group of units can all reach, nearest first.
+  SF.reachable = function (state, owner, units) {
+    units = units.filter(function (u) { return !isAir(u); });
+    if (!units.length) return [];
+    var fromId = units[0].at;
     var vision = SF.vision(state, owner);
-    var maps = types.map(function (type) { return reachType(state, owner, fromId, type, vision); });
+    var space = SF.spaceOf(units.filter(function (u) { return !isNaval(u); }));
+    var seen = {};
+    var maps = [];
+    units.forEach(function (u) {
+      var key = u.type + (isCargo(u) ? "*" : "");
+      if (seen[key]) return;
+      seen[key] = true;
+      maps.push(reachUnit(state, owner, u, vision, space));
+    });
     return Object.keys(maps[0]).filter(function (id) {
       return maps.every(function (m) { return m[id] !== undefined; });
     }).sort(function (a, b) {
@@ -180,7 +274,7 @@
 
   function checkUnits(state, owner, unitIds) {
     var units = state.units.filter(function (u) { return unitIds.indexOf(u.id) !== -1; });
-    if (!units.length) throw new Error("No units");
+    if (!units.length || units.length !== unitIds.length) throw new Error("No units");
     var from = units[0].at;
     units.forEach(function (u) {
       if (u.owner !== owner || u.at !== from) throw new Error("Bad order");
@@ -189,29 +283,64 @@
     return units;
   }
 
-  function typesOf(units) {
-    var types = [];
-    units.forEach(function (u) { if (types.indexOf(u.type) === -1) types.push(u.type); });
-    return types;
-  }
-
+  // A ground move: march, attack, board a transport, or land from one.
   SF.addOrder = function (state, owner, unitIds, to) {
     var units = checkUnits(state, owner, unitIds);
-    units.forEach(function (u) { if (isAir(u)) throw new Error("Planes do not move like ground units"); });
+    units.forEach(function (u) { if (isAir(u) || isNaval(u)) throw new Error("Not a ground unit"); });
     var from = units[0].at;
-    if (SF.reachable(state, owner, from, typesOf(units)).indexOf(to) === -1) throw new Error("Out of reach");
+    if (SF.reachable(state, owner, units).indexOf(to) === -1) throw new Error("Out of reach");
     var order = { id: state.nextOrderId++, kind: "move", unitIds: unitIds.slice(), from: from, to: to };
     state.orders[owner].push(order);
     return order;
   };
 
-  // Enemy squares artillery can see and fire at from a square.
-  SF.bombardTargets = function (state, owner, fromId) {
-    var range = SF.UNIT_TYPES.artillery.bombardRange;
+  // Land squares next to an ocean square that troops could land on.
+  SF.landingSquares = function (oceanId) {
+    return SF.neighbors(SF.sq(oceanId)).filter(function (n) { return isLand(n.id); })
+      .map(function (n) { return n.id; });
+  };
+
+  // A sea move. Transports can load ground units in the port they leave
+  // (cargoIds), and land everything aboard next to where they stop (landAt).
+  SF.addSail = function (state, owner, shipIds, to, cargoIds, landAt) {
+    var ships = checkUnits(state, owner, shipIds);
+    ships.forEach(function (u) { if (!isNaval(u)) throw new Error("Not a ship"); });
+    if (state.econ[owner].noFuel) throw new Error("Out of gasoline");
+    var from = ships[0].at;
+    if (SF.reachable(state, owner, ships).indexOf(to) === -1) throw new Error("Out of reach");
+    cargoIds = cargoIds || [];
+    var transports = ships.filter(function (u) { return u.type === "transport"; });
+    var cargo = [];
+    if (cargoIds.length) {
+      if (!transports.length) throw new Error("Only transports carry troops");
+      cargo = checkUnits(state, owner, cargoIds);
+      cargo.forEach(function (u) { if (!isGround(u) || u.at !== from) throw new Error("Cannot load that unit"); });
+      var room = transports.reduce(function (n, t) { return n + SF.roomOn(state, t); }, 0);
+      if (SF.spaceOf(cargo) > room) throw new Error("Not enough room on the transports");
+    }
+    if (landAt) {
+      var aboard = transports.reduce(function (acc, t) { return acc.concat(SF.cargoOf(state, t)); }, []).concat(cargo);
+      if (!aboard.length) throw new Error("No troops aboard to land");
+      if (SF.sq(to).terrain.key !== "ocean" || SF.landingSquares(to).indexOf(landAt) === -1) throw new Error("Cannot land there");
+      if (SF.sq(landAt).terrain.key === "river" && aboard.some(function (u) { return !SF.UNIT_TYPES[u.type].crossRiver; })) {
+        throw new Error("Tanks cannot land on a river square");
+      }
+    }
+    var order = {
+      id: state.nextOrderId++, kind: "sail", unitIds: shipIds.slice(), from: from, to: to,
+      cargoIds: cargoIds.slice(), landAt: landAt || null
+    };
+    state.orders[owner].push(order);
+    return order;
+  };
+
+  // Enemy squares that artillery or destroyers can see and fire at.
+  SF.bombardTargets = function (state, owner, fromId, type) {
+    var range = SF.UNIT_TYPES[type].bombardRange;
     var vision = SF.vision(state, owner);
     return SF.allSquares().filter(function (sq) {
-      return distance(fromId, sq.id) <= range &&
-        knownOccupant(state, owner, sq.id, vision) === 1 - owner;
+      return isLand(sq.id) && distance(fromId, sq.id) <= range &&
+        knownOccupant(state, owner, sq.id, vision, "ground") === 1 - owner;
     }).map(function (sq) { return sq.id; }).sort(function (a, b) {
       return distance(fromId, a) - distance(fromId, b);
     });
@@ -219,10 +348,13 @@
 
   SF.addBombard = function (state, owner, unitIds, target) {
     var units = checkUnits(state, owner, unitIds);
-    var from = units[0].at;
-    units.forEach(function (u) { if (u.type !== "artillery") throw new Error("Only artillery can bombard"); });
-    if (SF.bombardTargets(state, owner, from).indexOf(target) === -1) throw new Error("Out of range");
-    var order = { id: state.nextOrderId++, kind: "bombard", unitIds: unitIds.slice(), from: from, to: target };
+    var type = units[0].type;
+    units.forEach(function (u) {
+      if (u.type !== type || !SF.UNIT_TYPES[type].bombardRange) throw new Error("Those units cannot bombard");
+    });
+    if (isNaval(units[0]) && state.econ[owner].noFuel) throw new Error("Out of gasoline");
+    if (SF.bombardTargets(state, owner, units[0].at, type).indexOf(target) === -1) throw new Error("Out of range");
+    var order = { id: state.nextOrderId++, kind: "bombard", unitIds: unitIds.slice(), from: units[0].at, to: target };
     state.orders[owner].push(order);
     return order;
   };
@@ -267,15 +399,22 @@
 
   // ---------- Battles ----------
 
-  function attackValue(u, terrain) {
-    var v = SF.UNIT_TYPES[u.type].attack;
+  function huntBonus(u, foes) {
+    var hunts = SF.UNIT_TYPES[u.type].hunts;
+    if (!hunts) return 0;
+    return foes.some(function (f) { return hunts.indexOf(f.type) !== -1; }) ? SF.HUNT_BONUS : 0;
+  }
+
+  function attackValue(u, terrain, foes, landing) {
+    var v = SF.UNIT_TYPES[u.type].attack + huntBonus(u, foes);
     if (u.type === "tank" && terrain) v += SF.TANK_ATTACK[terrain] || 0;
+    if (landing && landing[u.id]) v -= SF.LANDING_PENALTY;
     return v;
   }
 
-  function defenseValue(u, terrain) {
+  function defenseValue(u, terrain, foes) {
     var t = SF.UNIT_TYPES[u.type];
-    var v = t.defense + (SF.DEFENSE_BONUS[terrain] || 0);
+    var v = t.defense + (SF.DEFENSE_BONUS[terrain] || 0) + huntBonus(u, foes);
     if (t.rough) v += SF.ROUGH_BONUS[terrain] || 0;
     return v;
   }
@@ -289,16 +428,16 @@
 
   // One battle. In a normal battle the defender gets terrain bonuses. In a
   // meeting battle both sides ran into each other, and both fight as
-  // attackers. Lasts up to SF.BATTLE_ROUNDS rounds.
-  SF.fight = function (attackers, defenders, terrain, meeting, rand) {
+  // attackers. landing marks attacking unit ids that came ashore from the sea.
+  SF.fight = function (attackers, defenders, terrain, meeting, rand, landing) {
     rand = rand || Math.random;
     var att = attackers.slice(), def = defenders.slice();
     var attLost = [], defLost = [];
     for (var round = 0; round < SF.BATTLE_ROUNDS && att.length && def.length; round++) {
       var attHits = 0, defHits = 0;
-      att.forEach(function (u) { if (rand() < hitChance(attackValue(u, terrain))) attHits++; });
+      att.forEach(function (u) { if (rand() < hitChance(attackValue(u, terrain, def, landing))) attHits++; });
       def.forEach(function (u) {
-        var v = meeting ? attackValue(u, terrain) : defenseValue(u, terrain);
+        var v = meeting ? attackValue(u, terrain, att) : defenseValue(u, terrain, att);
         if (rand() < hitChance(v)) defHits++;
       });
       defLost = defLost.concat(takeLosses(def, attHits));
@@ -312,22 +451,29 @@
     return { attLost: attLost, defLost: defLost, attLeft: att, defLeft: def, result: result };
   };
 
-  // Chance, as a whole percent, that these units take the target square
-  // from the enemy units this side can see there.
-  SF.attackOdds = function (state, owner, units, target, rand) {
-    var defenders = SF.visibleEnemies(state, owner, target).filter(function (u) { return !isAir(u); });
+  // Chance, as a whole percent, that these units take the target square from
+  // the enemy units this side can see there. landing: they come from the sea.
+  SF.attackOdds = function (state, owner, units, target, landing, rand) {
+    var sea = !isLand(target);
+    var defenders = SF.visibleEnemies(state, owner, target).filter(sea ? isShip : isGround);
     var terrain = SF.sq(target).terrain.key;
+    var marks = null;
+    if (landing) {
+      marks = {};
+      units.forEach(function (u) { marks[u.id] = true; });
+    }
     var wins = 0, runs = 400;
     for (var i = 0; i < runs; i++) {
-      if (SF.fight(units, defenders, terrain, false, rand).result === "attacker") wins++;
+      if (SF.fight(units, defenders, terrain, false, rand, marks).result === "attacker") wins++;
     }
     // Nothing is ever certain, so never show 0% or 100%.
     return Math.min(99, Math.max(1, Math.round((wins / runs) * 100)));
   };
 
-  SF.bombardChance = function (target) {
+  SF.bombardChance = function (target, type) {
     var terrain = SF.sq(target).terrain.key;
-    return Math.max(0.05, SF.BOMBARD_CHANCE - (SF.BOMBARD_TERRAIN[terrain] || 0));
+    var base = type === "destroyer" ? SF.SHORE_BOMBARD_CHANCE : SF.BOMBARD_CHANCE;
+    return Math.max(0.05, base - (SF.BOMBARD_TERRAIN[terrain] || 0));
   };
 
   // The computer opponent. For now it only defends, so it gives no orders.
@@ -350,50 +496,56 @@
     function unitsOf(order) {
       return order.unitIds.map(function (id) { return alive[id]; }).filter(Boolean);
     }
-    function kill(units) { units.forEach(function (u) { delete alive[u.id]; }); }
     function living() { return Object.keys(alive).map(function (id) { return alive[id]; }); }
+    // Losing a transport loses everything aboard.
+    function kill(units) {
+      units.forEach(function (u) {
+        if (!alive[u.id]) return;
+        delete alive[u.id];
+        if (u.type === "transport") {
+          var aboard = living().filter(function (c) { return c.aboard === u.id; });
+          if (aboard.length) {
+            kill(aboard);
+            events.push({ type: "cargoLost", owner: u.owner, at: u.at, what: SF.describeUnits(aboard) });
+          }
+        }
+      });
+    }
 
     var all = [];
     [0, 1].forEach(function (owner) {
       state.orders[owner].forEach(function (o) { all.push({ owner: owner, order: o }); });
     });
 
-    // 1. Artillery fires first.
+    // 1. Artillery and destroyers fire first.
     all.filter(function (e) { return e.order.kind === "bombard"; }).forEach(function (e) {
       var guns = unitsOf(e.order);
       if (!guns.length) return;
       var killed = [];
-      guns.forEach(function () {
+      guns.forEach(function (g) {
         var targets = living().filter(function (u) {
-          return u.at === e.order.to && u.owner !== e.owner && !isAir(u);
+          return u.at === e.order.to && u.owner !== e.owner && isGround(u);
         });
         if (!targets.length) return;
-        if (rand() < SF.bombardChance(e.order.to)) {
+        if (rand() < SF.bombardChance(e.order.to, g.type)) {
           var hit = targets[Math.floor(rand() * targets.length)];
           killed.push(hit);
-          delete alive[hit.id];
+          kill([hit]);
         }
       });
       events.push({
         type: "bombard", owner: e.owner, what: SF.describeUnits(guns), from: e.order.from,
-        at: e.order.to, killed: SF.describeUnits(killed)
+        at: e.order.to, killed: SF.describeUnits(killed), naval: isNaval(guns[0])
       });
     });
 
-    // 2. Ground movement and battles.
-    var moves = all.filter(function (e) { return e.order.kind === "move"; });
-    moves.forEach(function (e) { e.units = unitsOf(e.order); });
-    moves = moves.filter(function (e) { return e.units.length; });
-
-    var inTransit = {};
-    moves.forEach(function (e) { e.units.forEach(function (u) { inTransit[u.id] = true; }); });
-    var retreats = [];   // { owner, units, to }
-
-    function battleEvent(at, attOwner, att, def, outcome, meeting) {
+    function battleEvent(at, attOwner, att, def, outcome, meeting, landing) {
       events.push({
         type: "battle",
         at: at,
         meeting: meeting,
+        landing: !!landing,
+        sea: !isLand(at.split(" ")[0]),
         attacker: attOwner,
         attWhat: SF.describeUnits(att),
         defWhat: SF.describeUnits(def),
@@ -403,103 +555,184 @@
       });
     }
 
-    // Armies trying to swap squares meet halfway. Survivors go back home.
-    moves.forEach(function (a) {
-      if (a.done || a.owner !== 0) return;
-      moves.forEach(function (b) {
-        if (b.done || a.done || b.owner !== 1) return;
-        if (a.order.from === b.order.to && a.order.to === b.order.from) {
-          var out = SF.fight(a.units, b.units, null, true, rand);
+    // Moves on one layer, land or sea, all at once. Each entry is
+    // { owner, units, from, to, landing }. Returns retreats to resolve later.
+    function resolveLayer(entries, holds, onArrive) {
+      var inTransit = {};
+      entries.forEach(function (e) {
+        e.units = e.units.filter(function (u) { return alive[u.id]; });
+        e.units.forEach(function (u) { inTransit[u.id] = true; });
+      });
+      entries = entries.filter(function (e) { return e.units.length; });
+      var retreats = [];
+
+      // Forces trying to swap squares meet halfway. Survivors go back.
+      entries.forEach(function (a) {
+        if (a.done || a.owner !== 0 || a.landing) return;
+        entries.forEach(function (b) {
+          if (b.done || a.done || b.owner !== 1 || b.landing) return;
+          if (a.from === b.to && a.to === b.from) {
+            var out = SF.fight(a.units, b.units, null, true, rand);
+            kill(out.attLost); kill(out.defLost);
+            battleEvent(a.from + " and " + b.from, 0, a.units, b.units, out, true);
+            a.done = b.done = true;
+            a.units.concat(b.units).forEach(function (u) { delete inTransit[u.id]; });
+          }
+        });
+      });
+
+      var byTarget = {};
+      entries.forEach(function (e) {
+        if (e.done) return;
+        (byTarget[e.to] = byTarget[e.to] || []).push(e);
+      });
+
+      Object.keys(byTarget).sort().forEach(function (target) {
+        var terrain = SF.sq(target).terrain.key;
+        var stay = living().filter(function (u) { return u.at === target && !inTransit[u.id] && holds(u); });
+        var side = [[], []];
+        byTarget[target].forEach(function (e) {
+          e.units = e.units.filter(function (u) { return alive[u.id]; });
+          if (e.units.length) side[e.owner].push(e);
+        });
+        function unitsIn(list) { return list.reduce(function (acc, x) { return acc.concat(x.units); }, []); }
+        function landingMarks(list) {
+          var m = {};
+          list.forEach(function (x) { if (x.landing) x.units.forEach(function (u) { m[u.id] = true; }); });
+          return m;
+        }
+        function place(list, quiet) {
+          list.forEach(function (x) {
+            var arrived = x.units.filter(function (u) { return alive[u.id]; });
+            arrived.forEach(function (u) { onArrive(u, target, x); });
+            if (!quiet && arrived.length) {
+              events.push({
+                type: "move", owner: x.owner, what: SF.describeUnits(arrived), from: x.from, to: target,
+                landing: !!x.landing, unitIds: arrived.map(function (u) { return u.id; })
+              });
+            }
+          });
+        }
+        function retreat(list) {
+          list.forEach(function (x) {
+            // Troops that fail to land stay aboard their transport.
+            if (x.landing) return;
+            var back = x.units.filter(function (u) { return alive[u.id]; });
+            if (back.length) retreats.push({ owner: x.owner, units: back, to: x.from });
+          });
+        }
+
+        if (stay.length) {
+          var defOwner = stay[0].owner, attOwner = 1 - defOwner;
+          var attackers = unitsIn(side[attOwner]);
+          // Friendly units arriving join the defense.
+          place(side[defOwner]);
+          if (!attackers.length) return;
+          var defenders = stay.concat(unitsIn(side[defOwner]));
+          var landingAll = side[attOwner].every(function (x) { return x.landing; });
+          var out = SF.fight(attackers, defenders, terrain, false, rand, landingMarks(side[attOwner]));
           kill(out.attLost); kill(out.defLost);
-          battleEvent(a.order.from + " and " + b.order.from, 0, a.units, b.units, out, true);
-          a.done = b.done = true;
-          a.units.concat(b.units).forEach(function (u) { delete inTransit[u.id]; });
+          battleEvent(target, attOwner, attackers, defenders, out, false, landingAll);
+          if (out.result === "attacker") place(side[attOwner], true);
+          else retreat(side[attOwner]);
+        } else if (side[0].length && side[1].length) {
+          var a = unitsIn(side[0]), b = unitsIn(side[1]);
+          var meet = SF.fight(a, b, terrain, true, rand);
+          kill(meet.attLost); kill(meet.defLost);
+          battleEvent(target, 0, a, b, meet, true);
+          if (meet.result === "attacker") { place(side[0], true); retreat(side[1]); }
+          else if (meet.result === "defender") { place(side[1], true); retreat(side[0]); }
+          else { retreat(side[0]); retreat(side[1]); }
+        } else {
+          place(side[0].length ? side[0] : side[1]);
         }
       });
-    });
-
-    // Group the remaining moves by the square they head for.
-    var byTarget = {};
-    moves.forEach(function (e) {
-      if (e.done) return;
-      (byTarget[e.order.to] = byTarget[e.order.to] || []).push(e);
-    });
-
-    Object.keys(byTarget).sort().forEach(function (target) {
-      var incoming = byTarget[target];
-      var terrain = SF.sq(target).terrain.key;
-      var stay = living().filter(function (u) { return u.at === target && !inTransit[u.id] && !isAir(u); });
-      var side = [[], []];
-      incoming.forEach(function (e) {
-        e.units = e.units.filter(function (u) { return alive[u.id]; });
-        side[e.owner].push(e);
-      });
-      function unitsIn(list) { return list.reduce(function (acc, e) { return acc.concat(e.units); }, []); }
-      function place(list) {
-        list.forEach(function (e) { e.units.forEach(function (u) { if (alive[u.id]) u.at = target; }); });
-      }
-      function arrive(list) {
-        place(list);
-        list.forEach(function (e) {
-          events.push({
-            type: "move", owner: e.owner, what: SF.describeUnits(e.units), from: e.order.from, to: target,
-            unitIds: e.units.map(function (u) { return u.id; })
-          });
-        });
-      }
-      function retreat(list) {
-        list.forEach(function (e) {
-          var back = e.units.filter(function (u) { return alive[u.id]; });
-          if (back.length) retreats.push({ owner: e.owner, units: back, to: e.order.from });
-        });
-      }
-
-      if (stay.length) {
-        var defOwner = stay[0].owner, attOwner = 1 - defOwner;
-        var attackers = unitsIn(side[attOwner]);
-        // Friendly units arriving join the defense.
-        arrive(side[defOwner]);
-        if (!attackers.length) return;
-        var defenders = stay.concat(unitsIn(side[defOwner]));
-        var out = SF.fight(attackers, defenders, terrain, false, rand);
-        kill(out.attLost); kill(out.defLost);
-        battleEvent(target, attOwner, attackers, defenders, out, false);
-        if (out.result === "attacker") place(side[attOwner]);
-        else retreat(side[attOwner]);
-      } else if (side[0].length && side[1].length) {
-        var a = unitsIn(side[0]), b = unitsIn(side[1]);
-        var meet = SF.fight(a, b, terrain, true, rand);
-        kill(meet.attLost); kill(meet.defLost);
-        battleEvent(target, 0, a, b, meet, true);
-        if (meet.result === "attacker") { place(side[0]); retreat(side[1]); }
-        else if (meet.result === "defender") { place(side[1]); retreat(side[0]); }
-        else { retreat(side[0]); retreat(side[1]); }
-      } else {
-        arrive(side[0].length ? side[0] : side[1]);
-      }
-    });
-
-    // Units falling back to a square the enemy now holds are cut off and lost.
-    function retreating(u) {
-      return retreats.some(function (r) { return r.units.indexOf(u) !== -1; });
+      return retreats;
     }
-    retreats.forEach(function (r) {
-      var held = living().some(function (u) {
-        return u.at === r.to && u.owner !== r.owner && !isAir(u) && !retreating(u);
+
+    function settleRetreats(retreats, holds) {
+      function retreating(u) { return retreats.some(function (r) { return r.units.indexOf(u) !== -1; }); }
+      retreats.forEach(function (r) {
+        var held = living().some(function (u) {
+          return u.at === r.to && u.owner !== r.owner && holds(u) && !retreating(u);
+        });
+        if (held) {
+          kill(r.units);
+          events.push({ type: "cutOff", owner: r.owner, what: SF.describeUnits(r.units), at: r.to });
+        } else {
+          r.units.forEach(function (u) { u.at = r.to; });
+        }
       });
-      if (held) {
-        kill(r.units);
-        events.push({ type: "cutOff", owner: r.owner, what: SF.describeUnits(r.units), at: r.to });
-      } else {
-        r.units.forEach(function (u) { u.at = r.to; });
-      }
+    }
+
+    // 2. Transports load troops in the port they leave.
+    var sails = all.filter(function (e) { return e.order.kind === "sail"; });
+    sails.forEach(function (e) {
+      var transports = unitsOf(e.order).filter(function (u) { return u.type === "transport"; });
+      (e.order.cargoIds || []).forEach(function (id) {
+        var u = alive[id];
+        if (!u || u.at !== e.order.from || !isGround(u)) return;
+        var t = transports.filter(function (x) { return SF.roomOn(state, x) >= SF.cargoSpace(u); })[0];
+        if (t) u.aboard = t.id;
+      });
     });
 
-    // 3. Planes in a city the enemy now holds are destroyed on the ground.
+    // 3. Ships sail and fight. Cargo goes wherever its transport goes.
+    function moveShip(u, target) {
+      u.at = target;
+      living().forEach(function (c) { if (c.aboard === u.id) c.at = target; });
+    }
+    var seaRetreats = resolveLayer(sails.map(function (e) {
+      return { owner: e.owner, units: unitsOf(e.order), from: e.order.from, to: e.order.to, order: e.order };
+    }), isShip, moveShip);
+    seaRetreats.forEach(function (r) { r.units.forEach(function (u) { moveShip(u, r.to); }); });
+    // A fleet driven back can never be cut off at sea, so it simply returns.
+    // Troops on a transport that is in port go ashore there.
+    living().forEach(function (c) {
+      if (isCargo(c) && isLand(c.at)) c.aboard = null;
+    });
+
+    // 4. Ground moves, landings, and boarding.
+    var groundEntries = [];
+    sails.forEach(function (e) {
+      if (!e.order.landAt) return;
+      var transports = unitsOf(e.order).filter(function (u) { return u.type === "transport" && u.at === e.order.to; });
+      var aboard = living().filter(function (c) {
+        return transports.some(function (t) { return c.aboard === t.id; });
+      });
+      if (aboard.length) {
+        groundEntries.push({ owner: e.owner, units: aboard, from: e.order.to, to: e.order.landAt, landing: true });
+      }
+    });
+    all.filter(function (e) { return e.order.kind === "move"; }).forEach(function (e) {
+      var units = unitsOf(e.order);
+      if (!units.length) return;
+      var landing = units.some(isCargo);
+      if (!isLand(e.order.to)) {
+        // Boarding a transport at sea.
+        var space = SF.spaceOf(units);
+        var t = transportsWithRoom(state, e.owner, e.order.to, space)[0];
+        if (t && !SF.orderFor(state, t.id)) {
+          units.forEach(function (u) { u.at = e.order.to; u.aboard = t.id; });
+          events.push({ type: "boarded", owner: e.owner, what: SF.describeUnits(units), at: e.order.to });
+        } else {
+          events.push({ type: "boardFailed", owner: e.owner, what: SF.describeUnits(units), at: e.order.to });
+        }
+        return;
+      }
+      groundEntries.push({ owner: e.owner, units: units, from: e.order.from, to: e.order.to, landing: landing });
+    });
+    var landRetreats = resolveLayer(groundEntries, isGround, function (u, target) {
+      u.at = target;
+      u.aboard = null;
+    });
+    settleRetreats(landRetreats, isGround);
+
+    // 5. Planes and docked ships in a city the enemy now holds are destroyed.
     var lostByPlace = {};
     living().forEach(function (u) {
-      if (!isAir(u)) return;
-      var enemyThere = living().some(function (g) { return g.at === u.at && g.owner !== u.owner && !isAir(g); });
+      if (!(isAir(u) || isNaval(u)) || !isLand(u.at)) return;
+      var enemyThere = living().some(function (g) { return g.at === u.at && g.owner !== u.owner && isGround(g); });
       if (!enemyThere) return;
       var key = u.owner + "@" + u.at;
       (lostByPlace[key] = lostByPlace[key] || { owner: u.owner, at: u.at, units: [] }).units.push(u);
@@ -510,13 +743,13 @@
       events.push({ type: "planesLost", owner: g.owner, at: g.at, what: SF.describeUnits(g.units) });
     });
 
-    // 4. Scout planes fly after the fighting, so they see where armies ended up.
+    // 6. Scout planes fly after the fighting, so they see where armies ended up.
     all.filter(function (e) { return e.order.kind === "scout"; }).forEach(function (e) {
       var plane = unitsOf(e.order)[0];
       if (!plane) return;
       var area = around(e.order.to, SF.SCOUT_RADIUS);
       var guns = living().filter(function (u) {
-        return u.type === "antiAir" && u.owner !== e.owner && area.indexOf(u.at) !== -1;
+        return u.type === "antiAir" && u.owner !== e.owner && area.indexOf(u.at) !== -1 && !isCargo(u);
       });
       var shot = guns.some(function () { return rand() < SF.SCOUT_AA_CHANCE; });
       if (shot) {
@@ -531,7 +764,7 @@
 
     state.units = state.units.filter(function (u) { return alive[u.id]; });
 
-    // 5. Economy: cities change hands, production finishes, income comes in.
+    // 7. Economy: cities change hands, production finishes, income comes in.
     SF.updateCityOwners(state, events);
     SF.advanceProjects(state, events);
     SF.collectIncome(state, events);

@@ -51,14 +51,35 @@ SF.UNIT_TYPES = {
   antiAir: { name: "anti-aircraft gun", plural: "anti-aircraft guns", move: 2, crossRiver: true, attack: 1, defense: 2, loss: 3 },
   // Air units are based in cities. They do not hold or block squares, and do
   // not fight in ground battles.
-  scoutPlane: { name: "scout plane", plural: "scout planes", air: true, loss: 7 }
+  scoutPlane: { name: "scout plane", plural: "scout planes", air: true, loss: 7 },
+  // Ships move on ocean squares and dock in port cities you hold. Like
+  // planes, they do not hold land squares.
+  destroyer: { name: "destroyer", plural: "destroyers", naval: true, move: 4, attack: 5, defense: 5, loss: 3,
+    bombardRange: 1, sonar: 2, hunts: ["submarine"] },
+  submarine: { name: "submarine", plural: "submarines", naval: true, move: 3, attack: 6, defense: 3, loss: 4,
+    hunts: ["transport", "carrier"] },
+  transport: { name: "transport", plural: "transports", naval: true, move: 4, attack: 0, defense: 1, loss: 1, capacity: 4 },
+  carrier: { name: "carrier", plural: "carriers", naval: true, move: 3, attack: 1, defense: 4, loss: 5 }
 };
-SF.UNIT_ORDER = ["infantry", "specialForces", "engineer", "tank", "artillery", "antiAir", "scoutPlane"];
+SF.UNIT_ORDER = ["infantry", "specialForces", "engineer", "tank", "artillery", "antiAir",
+  "destroyer", "submarine", "transport", "carrier", "scoutPlane"];
+
+// A unit gets this much extra attack and defense in a battle with a type it hunts.
+SF.HUNT_BONUS = 3;
+// Room each ground unit takes on a transport. Anything not listed takes 1.
+SF.CARGO_SPACE = { tank: 2, artillery: 2 };
+// Units landing from the sea lose this much attack.
+SF.LANDING_PENALTY = 2;
+// Gasoline each ship uses every turn.
+SF.UPKEEP = { destroyer: 1, submarine: 1, transport: 1, carrier: 2 };
+// Destroyer shore bombardment: chance to destroy one unit, before terrain.
+SF.SHORE_BOMBARD_CHANCE = 0.4;
 
 // Fog of war
 // Ground units, and cities you hold, see every square touching them,
 // diagonals included. You also see all of your own land.
-// Special forces are only spotted by ground units next to them.
+// Special forces and submarines are only spotted by units next to them.
+// Destroyers also find submarines up to 2 squares away.
 SF.SCOUT_RANGE = 10;         // squares from its base a scout plane can reach
 SF.SCOUT_RADIUS = 2;         // it sees a 5 by 5 area around its target
 SF.SCOUT_AA_CHANCE = 0.2;    // chance each enemy anti-aircraft gun in that area shoots it down
@@ -66,7 +87,7 @@ SF.SCOUT_AA_CHANCE = 0.2;    // chance each enemy anti-aircraft gun in that area
 // Battles
 SF.BATTLE_ROUNDS = 3;
 // Added to every defender's defense on that terrain.
-SF.DEFENSE_BONUS = { plains: 0, bridge: 0, river: 1, forest: 1, city: 3, mountains: 4 };
+SF.DEFENSE_BONUS = { plains: 0, bridge: 0, river: 1, forest: 1, city: 3, mountains: 4, ocean: 0 };
 // Extra defense for infantry and special forces in rough ground.
 SF.ROUGH_BONUS = { forest: 1, city: 1, mountains: 1 };
 // Added to a tank's attack, by the terrain it attacks into.
@@ -86,6 +107,6 @@ SF.STARTING_ARMY = [
   ["L3", { infantry: 2, tank: 2, artillery: 1, scoutPlane: 1 }],
   ["O3", { infantry: 2, tank: 1, engineer: 1, specialForces: 1 }],
   ["A5", { infantry: 1 }],
-  ["E6", { infantry: 1 }],
+  ["E6", { infantry: 1, destroyer: 1, transport: 1 }],
   ["I6", { infantry: 1 }]
 ];
