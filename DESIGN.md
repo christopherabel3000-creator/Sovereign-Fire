@@ -7,7 +7,7 @@ Sovereign Fire is a turn-based modern war between two nations. Both players secr
 ## Modes
 
 - **Versus computer:** Easy, Normal, or Hard, chosen when starting a game.
-- **Online versus a friend:** live play with no turn timer. Each player presses a button to lock in their turn. Players hear a message when the opponent has locked in. Games save automatically and can be resumed later.
+- **Online versus a friend:** live play with no turn timer, through a 4-letter game code. Each player presses a button to lock in their turn, and hears a message when the opponent has locked in. Games save automatically and can be resumed later.
 
 ## Pre-game setup
 
@@ -393,6 +393,23 @@ These numbers are starting points for playtesting.
 
 **From simulated games** between computer players, wars ended between turns 23 and 46, by surrender or conquest. A Military State's early rush beat a Scientific Republic by turn 32, which is worth watching in playtesting.
 
+## Online play, first version
+
+**Where games live.** Each online game is one record in the shared Firebase Realtime Database, under sovereignFire, kept apart from the other games' data. The database only accepts a save whose version number is exactly one more than the stored one, so two players can never overwrite each other. A refused save is read again and retried. Old games can be cleared after a week.
+
+**Starting.** One player chooses Create an online game and gets a 4-letter code. They play the North. The other chooses Join game and types the code, and plays the South. Both set up their nations at the same time, and the war starts when both are done.
+
+**Each turn.**
+- Both players give orders on their own devices. Nothing is sent until they lock in.
+- Locking in sends only that player's own side: orders, workforce, research, production, and nation.
+- A player can unlock and change their orders until the other player also locks in.
+- Whoever locks in second plays out the turn and saves the result for both.
+- Each player hears when the other locks in, and when the results arrive. The screen updates by itself.
+
+**Coming back.** The game is saved on each device. Continue online game picks it up again, and typing the code under Join game on the same device rejoins as the same side.
+
+**Fairness.** Each screen only shows its own side's view. The full game is stored in the database, so it is meant for friends who trust each other, like the other games.
+
 ## Economy, first version
 
 These numbers are starting points for playtesting.
@@ -474,4 +491,4 @@ Each step ends with something playable to test on iPhone and computer.
 9. **Morale, government types, and victory conditions.** (Built.)
 10. **Nuclear weapons.** (Built.)
 11. **A smarter computer opponent.** (Built.)
-12. **Online play with Firebase,** in the game's own section of the database.
+12. **Online play with Firebase,** in the game's own section of the database. (Built.)

@@ -27,6 +27,19 @@
       <li><button class="act" type="button" id="new-computer">Play against the computer</button></li>
       <li><button class="act" type="button" id="new-hotseat">Pass and play with a friend</button></li>
     </ul>
+    <h2>Play online with a friend</h2>
+    <ul class="plain">
+      <li id="continue-online-item" hidden><button class="act primary" type="button" id="continue-online-btn"></button></li>
+      <li><button class="act" type="button" id="online-create">Create an online game</button></li>
+      <li>
+        <form class="row" id="online-join-form">
+          <label for="online-join-code">Game code</label>
+          <input id="online-join-code" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="4">
+          <button class="act" type="submit">Join game</button>
+        </form>
+      </li>
+    </ul>
+    <p id="online-error" role="alert"></p>
   </section>
 
   <section id="plan" hidden>
@@ -59,6 +72,11 @@
     <h2 id="handoff-heading" tabindex="-1"></h2>
     <div id="handoff-report"></div>
     <p><button class="act primary" type="button" id="handoff-btn"></button></p>
+  </section>
+
+  <section id="waiting" hidden>
+    <h2 id="waiting-heading" tabindex="-1"></h2>
+    <div id="waiting-text"></div>
   </section>
 
   <section id="over" hidden>
@@ -127,6 +145,9 @@
       <p>Both sides give orders at the same time, in secret. When you are done, press Lock in orders. Once both sides have locked in, the turn plays out all at once, and you get a report of what happened. Units without orders stay where they are.</p>
       <p>In pass and play, a Pass the phone screen hides your orders before the other player takes their turn. Each player only ever sees their own side.</p>
       <p>The game saves itself after every change. Continue saved game on the first screen picks up where you left off.</p>
+
+      <h3>Playing online</h3>
+      <p>One player chooses Create an online game and shares the 4-letter code. The other types it under Join game. Both set up at the same time. Each turn, give your orders and lock in. You can unlock and make changes until your opponent locks in too. When both have locked in, the results arrive on both screens by themselves. Continue online game picks up where you left off.</p>
 
       <h3>Before the war</h3>
       <p>Choose a government, a nation name, and 10 starting buildings. Your opponent sees your government but not your buildings. Factories make industry, refineries make gasoline, and labs make science. Airfields are needed for planes and ports for ships.</p>
@@ -203,6 +224,7 @@
 <script src="js/tech.js"></script>
 <script src="js/morale.js"></script>
 <script src="js/ai.js"></script>
+<script src="js/online.js"></script>
 <script src="js/ui.js"></script>
 </body>
 </html>

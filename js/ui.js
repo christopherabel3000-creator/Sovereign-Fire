@@ -14,9 +14,44 @@
   function $(id) { return document.getElementById(id); }
 
   // ---------- Saving ----------
+  // Online games are saved separately, with the game code and which side you play.
+  var ONLINE_KEY = "sovereignFire.online";
+  var SIDES_KEY = "sovereignFire.onlineSides";
+  var net = null;   // { code, side } while playing online
+
   function save() {
     state.version = SAVE_VERSION;
-    try { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); } catch (e) { /* storage unavailable */ }
+    try {
+      if (state.mode === "online" && net) {
+        localStorage.setItem(ONLINE_KEY, JSON.stringify({ code: net.code, side: net.side, state: state }));
+      } else {
+        localStorage.setItem(SAVE_KEY, JSON.stringify(state));
+      }
+    } catch (e) { /* storage unavailable */ }
+  }
+  function loadOnline() {
+    try {
+      var raw = localStorage.getItem(ONLINE_KEY);
+      var s = raw ? JSON.parse(raw) : null;
+      return s && s.code && s.state && s.state.version === SAVE_VERSION ? s : null;
+    } catch (e) { return null; }
+  }
+  function clearOnline() {
+    try { localStorage.removeItem(ONLINE_KEY); } catch (e) { /* ignore */ }
+  }
+  // Remember which side you played in each game code, so you can rejoin.
+  function rememberSide(code, side) {
+    try {
+      var m = JSON.parse(localStorage.getItem(SIDES_KEY) || "{}");
+      m[code] = side;
+      localStorage.setItem(SIDES_KEY, JSON.stringify(m));
+    } catch (e) { /* ignore */ }
+  }
+  function knownSide(code) {
+    try {
+      var m = JSON.parse(localStorage.getItem(SIDES_KEY) || "{}");
+      return m[code] === 0 || m[code] === 1 ? m[code] : null;
+    } catch (e) { return null; }
   }
   function loadSave() {
     try {
@@ -72,7 +107,7 @@
   }
 
   function show(which) {
-    ["setup", "plan", "handoff", "over", "game"].forEach(function (id) { $(id).hidden = id !== which; });
+    ["setup", "plan", "handoff", "waiting", "over", "game"].forEach(function (id) { $(id).hidden = id !== which; });
   }
 
   // ---------- Map ----------
@@ -310,6 +345,10 @@
       box.appendChild(el("p", "Moving here: " + arriving.map(function (o) { return orderText(o, true); }).join("; ") + "."));
     }
 
+    if (lockedOnline()) {
+      box.appendChild(el("p", "Your orders are locked in. Unlock them to make changes."));
+      return;
+    }
     var waitingNow = unorderedAt(sq.id);
     var byType = {};
     waitingNow.forEach(function (u) { (byType[u.type] = byType[u.type] || []).push(u); });
@@ -1076,7 +1115,8 @@
       });
       box.appendChild(ul);
     }
-    $("lock-btn").textContent = "Lock in turn " + state.turn + " orders";
+    $("lock-btn").textContent = state.mode === "online" && (state.locked || [])[me()] ? "Unlock my orders" :
+      "Lock in turn " + state.turn + " orders";
   }
 
   function nextWaiting() {
@@ -1347,7 +1387,16 @@
   // ---------- Screens ----------
   function renderStatus() {
     var who = state.mode === "hotseat" ? sideName(me()) + " gives orders" : sideName(me()) + ", your orders";
-    $("status").textContent = "Turn " + state.turn + ". " + who + ".";
+    var text = "Turn " + state.turn + ". " + who + ".";
+    if (state.mode === "online") {
+      var locked = state.locked || [false, false];
+      if (locked[me()]) text = "Turn " + state.turn + ". Your orders are locked in. Waiting for " + sideName(foe()) + ".";
+      else if (locked[foe()]) text += " " + sideName(foe()) + " has locked in.";
+    }
+    $("status").textContent = text;
+    if (state.mode === "online") {
+      $("lock-btn").textContent = (state.locked || [])[me()] ? "Unlock my orders" : "Lock in turn " + state.turn + " orders";
+    }
   }
 
   // ---------- Starting buildings ----------
@@ -1379,7 +1428,8 @@
       planNation.name = SF.randomNationName(planNation.gov, avoid);
     }
     $("plan-heading").textContent = state.mode === "hotseat" ?
-      (me() === 0 ? "First player" : "Second player") + ", set up your nation" : "Set up your nation";
+      (me() === 0 ? "First player" : "Second player") + ", set up your nation" :
+      state.mode === "online" ? "Set up your nation. Game code " + spell(net.code) : "Set up your nation";
     var govSel = $("plan-gov");
     govSel.innerHTML = "";
     SF.GOVERNMENT_ORDER.forEach(function (g) {
@@ -1432,6 +1482,22 @@
     if (!name) { $("plan-error").textContent = "Give your nation a name, or press Suggest a name."; return; }
     if (state.mode === "hotseat" && me() === 1 && name === SF.nation(state, 0).name) {
       $("plan-error").textContent = "That name is taken by the other player.";
+      return;
+    }
+    if (state.mode === "online") {
+      var gov = $("plan-gov").value, myPlan = plan;
+      $("plan-done").disabled = true;
+      SF.online.finishSetup(net.code, net.side, name, gov, myPlan).then(function (remote) {
+        $("plan-done").disabled = false;
+        plan = null;
+        planNation = null;
+        adopt(remote);
+        renderAll();
+        $(state.phase === "orders" ? "status" : "waiting-heading").focus();
+      }).catch(function (x) {
+        $("plan-done").disabled = false;
+        $("plan-error").textContent = x.message;
+      });
       return;
     }
     SF.setNation(state, me(), name, $("plan-gov").value);
@@ -1615,6 +1681,10 @@
     if (e.warheads) box.appendChild(el("p", "Nuclear warheads ready: " + e.warheads + "."));
     box.appendChild(el("p", "Each turn: " + resourceList(inc) + ", from " + mp + " manpower."));
 
+    if (lockedOnline()) {
+      box.appendChild(el("p", "Your orders are locked in. Unlock them to change your workforce, research, or production."));
+      return;
+    }
     box.appendChild(el("h3", "Workforce"));
     var form = el("form", undefined, "order-form");
     var pickers = {};
@@ -1714,6 +1784,7 @@
     if (!state) { renderSetup(); return; }
     if (state.over) { renderGameOver(); return; }
     if (state.phase === "handoff") { renderHandoff(); return; }
+    if (state.mode === "online" && renderOnlineWait()) return;
     if (state.phase === "setup") { renderPlan(); return; }
     show("game");
     vis = SF.vision(state, me());
@@ -1729,6 +1800,11 @@
   function renderSetup() {
     show("setup");
     var saved = loadSave();
+    var onl = loadOnline();
+    $("continue-online-item").hidden = !onl;
+    if (onl) {
+      $("continue-online-btn").textContent = "Continue online game " + spell(onl.code) + ", turn " + onl.state.turn;
+    }
     $("continue-item").hidden = !saved;
     if (saved) {
       var kind = saved.mode === "hotseat" ? "pass and play" :
@@ -1786,7 +1862,154 @@
     $("plan-heading").focus();
   }
 
+  // ---------- Online ----------
+
+  function lockedOnline() { return state.mode === "online" && !!(state.locked || [])[me()]; }
+
+  // "K Q X Z", so screen readers say the letters one by one.
+  function spell(code) { return code.split("").join(" "); }
+
+  // While waiting on the other player before the war starts, show a waiting
+  // screen. Returns true if it did.
+  function renderOnlineWait() {
+    var other = sideName(foe());
+    var heading = null, lines = [];
+    if (!state.joined && me() === 0 && state.setupDone[0]) {
+      heading = "Waiting for your friend to join";
+      lines.push("Your game code is " + spell(net.code) + ". Your friend opens Sovereign Fire, chooses Join game, and types the code.");
+    } else if (state.phase === "setup" && state.setupDone[me()]) {
+      heading = "Waiting for " + (state.setupDone[foe()] ? other : "your opponent") + " to finish setting up";
+      lines.push("Game code " + spell(net.code) + ".");
+    }
+    if (!heading) return false;
+    show("waiting");
+    $("waiting-heading").textContent = heading;
+    var box = $("waiting-text");
+    box.innerHTML = "";
+    lines.forEach(function (t) { box.appendChild(el("p", t)); });
+    box.appendChild(el("p", "This screen updates by itself."));
+    return true;
+  }
+
+  // Take the saved game from the server as ours. During a turn, keep any
+  // orders and changes we have not locked in yet.
+  function adopt(remote) {
+    if (state && state.mode === "online" && !remote.over && remote.phase === "orders" && state.phase === "orders" &&
+        remote.turn === state.turn && !(remote.locked || [])[net.side]) {
+      SF.mergeSide(remote, state, net.side);
+    }
+    remote.current = net.side;
+    state = remote;
+    save();
+  }
+
+  // Something changed on the server.
+  function onRemote(remote) {
+    if (!state || state.mode !== "online") return;
+    var before = { turn: state.turn, phase: state.phase, joined: state.joined, over: !!state.over,
+      foeLocked: !!(state.locked || [])[foe()], setup: state.setupDone.slice() };
+    adopt(remote);
+    if (state.over && !before.over) {
+      renderAll();
+      $("over-heading").focus();
+    } else if (state.turn !== before.turn) {
+      selected = null;
+      renderAll();
+      $("report-heading").focus();
+      announce("Turn " + before.turn + " results are in.");
+    } else if (state.phase === "setup" && !state.setupDone[me()] && state.phase === before.phase) {
+      // Still choosing our own setup: do not redraw the form being filled in.
+      if (state.joined && !before.joined && me() === 0) announce("Your friend has joined.");
+    } else if (state.phase !== before.phase || state.joined !== before.joined ||
+               state.setupDone[foe()] !== before.setup[foe()]) {
+      renderAll();
+      if (state.joined && !before.joined && me() === 0) announce("Your friend has joined.");
+      if (state.phase === "orders" && before.phase !== "orders") {
+        $("status").focus();
+        announce("The war has begun.");
+      }
+    } else if (!!(state.locked || [])[foe()] !== before.foeLocked) {
+      // Only their lock changed. Update quietly so nothing you are doing is lost.
+      if (!$("game").hidden) renderStatus();
+      announce((state.locked || [])[foe()] ? sideName(foe()) + " has locked in their orders." :
+        sideName(foe()) + " unlocked their orders.");
+    }
+  }
+
+  function startOnline(code, side, remote) {
+    net = { code: code, side: side };
+    rememberSide(code, side);
+    state = null;
+    adopt(remote);
+    SF.online.listen(code, onRemote);
+    selected = null;
+    plan = null;
+    planNation = null;
+    renderAll();
+  }
+
+  function onlineError(x) {
+    $("online-error").textContent = x.message || "Something went wrong reaching the game server.";
+  }
+
+  function createOnline() {
+    $("online-error").textContent = "";
+    var fresh = SF.newGame("online");
+    fresh.joined = false;
+    fresh.locked = [false, false];
+    SF.online.create(fresh).then(function (code) {
+      startOnline(code, 0, fresh);
+      $("plan-heading").focus();
+      announce("Online game created. Your game code is " + spell(code) + ".");
+    }).catch(onlineError);
+  }
+
+  function joinOnline(text) {
+    $("online-error").textContent = "";
+    var code = SF.online.cleanCode(text);
+    if (!code) { $("online-error").textContent = "A game code is 4 letters."; return; }
+    var side = knownSide(code);
+    var go = side === null ? SF.online.join(code).then(function (remote) { return { side: 1, remote: remote }; }) :
+      SF.online.read(code).then(function (rec) {
+        if (!rec) throw new Error("There is no game with that code.");
+        return { side: side, remote: rec.state };
+      });
+    go.then(function (r) {
+      startOnline(code, r.side, r.remote);
+      var focus = state.over ? "over-heading" : !$("waiting").hidden ? "waiting-heading" :
+        state.phase === "setup" ? "plan-heading" : "status";
+      $(focus).focus();
+    }).catch(function (x) {
+      onlineError(/no longer exists/.test(x.message) ? new Error("There is no game with that code.") : x);
+    });
+  }
+
+  function lockInOnline() {
+    var btn = $("lock-btn");
+    btn.disabled = true;
+    var locked = (state.locked || [])[me()];
+    var step = locked ? SF.online.unlock(net.code, state, net.side) : SF.online.lockIn(net.code, state, net.side);
+    step.then(function (remote) {
+      btn.disabled = false;
+      var turn = state.turn;
+      adopt(remote);
+      selected = null;
+      renderAll();
+      if (state.over) { $("over-heading").focus(); return; }
+      if (state.turn !== turn) {
+        $("report-heading").focus();
+        announce("Turn " + turn + " results are in.");
+      } else {
+        $("status").focus();
+      }
+    }).catch(function (x) {
+      btn.disabled = false;
+      announce(x.message);
+    });
+  }
+
   function lockIn() {
+    if (state.mode === "online") { lockInOnline(); return; }
     if (state.mode === "computer") {
       SF.computerOrders(state);
       SF.resolveTurn(state);
@@ -1855,7 +2078,27 @@
     $("plan-name").value = planNation.name;
     announce("Suggested name: " + planNation.name + ".");
   });
+  $("online-create").addEventListener("click", createOnline);
+  $("online-join-form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    joinOnline($("online-join-code").value);
+  });
+  $("continue-online-btn").addEventListener("click", function () {
+    var onl = loadOnline();
+    if (!onl) return;
+    $("online-error").textContent = "";
+    net = { code: onl.code, side: onl.side };
+    state = onl.state;
+    SF.online.read(onl.code).then(function (rec) {
+      if (!rec) throw new Error("That online game has ended or expired.");
+      startOnline(onl.code, onl.side, rec.state);
+      var focus = state.over ? "over-heading" : !$("waiting").hidden ? "waiting-heading" :
+        state.phase === "setup" ? "plan-heading" : "status";
+      $(focus).focus();
+    }).catch(function (x) { state = null; net = null; onlineError(x); renderAll(); });
+  });
   $("over-new").addEventListener("click", function () {
+    if (state && state.mode === "online") { SF.online.stop(); clearOnline(); net = null; }
     clearSave();
     state = null;
     renderAll();
@@ -1864,6 +2107,16 @@
   $("lock-btn").addEventListener("click", lockIn);
   $("next-btn").addEventListener("click", nextWaiting);
   $("quit-btn").addEventListener("click", function () {
+    if (state && state.mode === "online") {
+      if (!window.confirm("Leave this online game? You can rejoin on this device by typing its code under Join game.")) return;
+      SF.online.stop();
+      clearOnline();
+      net = null;
+      state = null;
+      renderAll();
+      $("setup-heading").focus();
+      return;
+    }
     if (!window.confirm("Start a new game? The current game will be lost.")) return;
     clearSave();
     state = null;
