@@ -125,3 +125,11 @@ ul.plain li { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .help summary { cursor: pointer; font-weight: 700; min-height: 44px; display: flex; align-items: center; }
 .help summary:focus-visible { outline: 3px solid var(--focus); }
 .help ul { padding-left: 20px; }
+
+#turn-menu { margin-top: 16px; }
+#turn-menu h2 { margin-top: 0; }
+ul.menu li { display: block; }
+ul.menu button.act { width: 100%; text-align: left; }
+@media (min-width: 700px) {
+  ul.menu { grid-template-columns: 1fr 1fr; }
+}

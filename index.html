@@ -95,7 +95,14 @@
       <div id="report"></div>
     </section>
 
-    <h2>Map</h2>
+    <section id="turn-menu" class="panel">
+      <h2 id="turn-menu-heading" tabindex="-1">This turn</h2>
+      <ul class="plain menu" id="turn-actions"></ul>
+      <h3>Your cities</h3>
+      <ul class="plain menu" id="turn-cities"></ul>
+    </section>
+
+    <h2 id="map-heading" tabindex="-1">Map</h2>
     <div class="map-wrap">
       <table class="map" id="map">
         <caption class="muted">16 by 16 grid. Columns A to P, rows 1 to 16.</caption>
@@ -104,15 +111,18 @@
 
     <h2 id="selected-heading" tabindex="-1">Selected square</h2>
     <div class="panel" id="details"><p>No square selected yet.</p></div>
+    <p><button class="act back-to-menu" type="button">Back to This turn</button></p>
 
     <h2 id="nation-heading" tabindex="-1">Your nation</h2>
     <div id="nation"></div>
+    <p><button class="act back-to-menu" type="button">Back to This turn</button></p>
 
     <h2 id="orders-heading" tabindex="-1">Your orders</h2>
     <div id="orders"></div>
     <div class="row">
       <button class="act" type="button" id="next-btn">Next units without orders</button>
       <button class="act primary" type="button" id="lock-btn">Lock in orders</button>
+      <button class="act back-to-menu" type="button">Back to This turn</button>
     </div>
 
     <h2>Go to square</h2>
@@ -157,6 +167,7 @@
       <p>Each square reads like this: its name, terrain, whose land it is, any units on it, and whether it is hidden. Selecting a square opens its details and orders under the Selected square heading, just below the map.</p>
       <p>Ways to get around:</p>
       <ul>
+        <li>This turn: the menu above the map lists everything you can do this turn. Command units takes you to the next units waiting for orders, each city button opens that city to build, and the other buttons go to your workforce, research, special ability, and orders. Back to This turn buttons bring you back.</li>
         <li>Go to square: type a square like L3 to jump to it.</li>
         <li>Next units without orders: jumps to your next square with units still waiting.</li>
         <li>Your cities and Enemy cities: lists of buttons that jump to each city.</li>

@@ -100,6 +100,12 @@
   }
   function isHidden(id) { return !vis.wide[id]; }
 
+  function focusable(node, id) {
+    node.id = id;
+    node.tabIndex = -1;
+    return node;
+  }
+
   function announce(text) {
     var a = $("announcer");
     a.textContent = "";
@@ -1133,6 +1139,100 @@
     focusSquare(squares[idx].id);
   }
 
+  // ---------- This turn menu ----------
+  // A short list of everything you can do this turn, each one a button that
+  // takes you straight to the place to do it.
+  function squaresWaiting() {
+    return SF.allSquares().filter(function (sq) { return unorderedAt(sq.id).length > 0; });
+  }
+
+  // Select the next square with units waiting and go to its orders.
+  function commandNext() {
+    var squares = squaresWaiting();
+    if (!squares.length) { announce("All your units have orders."); return; }
+    var idx = 0;
+    if (selected) {
+      var cur = SF.sq(selected);
+      for (var i = 0; i < squares.length; i++) {
+        var s = squares[i];
+        if (s.row > cur.row || (s.row === cur.row && s.col > cur.col)) { idx = i; break; }
+      }
+    }
+    openSquare(squares[idx].id);
+  }
+
+  // Select a square and move to its details, below the map.
+  function openSquare(id) {
+    select(id);
+    $("selected-heading").focus();
+  }
+
+  function menuItem(ul, text, onClick, primary) {
+    var li = el("li");
+    var b = el("button", text, "act" + (primary ? " primary" : ""));
+    b.type = "button";
+    b.addEventListener("click", onClick);
+    li.appendChild(b);
+    ul.appendChild(li);
+    return b;
+  }
+
+  function goTo(id) { return function () { $(id).focus(); }; }
+
+  function researchSummary() {
+    var r = SF.researchOf(state, me());
+    if (!r.queue.length) return "Research: nothing queued, science is being saved";
+    return "Research: " + SF.tech(r.queue[0]).name + (r.queue.length > 1 ? ", " + (r.queue.length - 1) + " more queued" : "");
+  }
+
+  function workforceSummary() {
+    var e = state.econ[me()], mp = SF.manpower(state, me()), used = 0;
+    SF.JOB_ORDER.forEach(function (j) { used += e.workers[j]; });
+    return "Workforce: " + (used < mp ? (mp - used) + " manpower unassigned" : "all " + mp + " manpower assigned");
+  }
+
+  function renderTurnMenu() {
+    var ul = $("turn-actions");
+    ul.innerHTML = "";
+    var orders = myOrders().length;
+    var ordersText = "Review orders: " + (orders ? orders + (orders === 1 ? " order" : " orders") + " given" : "none yet");
+    if (lockedOnline()) {
+      menuItem(ul, ordersText, goTo("orders-heading"));
+      menuItem(ul, "Unlock my orders", lockIn, true);
+      $("turn-cities").parentNode.querySelector("h3").hidden = true;
+      $("turn-cities").innerHTML = "";
+      return;
+    }
+    var waiting = squaresWaiting();
+    var units = 0;
+    waiting.forEach(function (sq) { units += unorderedAt(sq.id).length; });
+    menuItem(ul, waiting.length ?
+      "Command units: " + units + (units === 1 ? " unit" : " units") + " waiting, on " +
+        waiting.length + (waiting.length === 1 ? " square" : " squares") :
+      "Command units: all units have orders", commandNext);
+    menuItem(ul, workforceSummary(), goTo("workforce-heading"));
+    menuItem(ul, researchSummary(), goTo("research-heading"));
+    var ability = SF.ABILITIES[SF.gov(state, me()).ability];
+    var problem = SF.abilityProblem(state, me());
+    menuItem(ul, "Special ability: " + ability.name + (problem ? ", not ready" : ", ready"), goTo("ability-btn"));
+    menuItem(ul, "Your nation: morale, stockpile, and production", goTo("nation-heading"));
+    menuItem(ul, ordersText, goTo("orders-heading"));
+    menuItem(ul, "Map", goTo("map-heading"));
+    menuItem(ul, "Lock in turn " + state.turn + " orders", lockIn, true);
+
+    var cities = $("turn-cities");
+    cities.parentNode.querySelector("h3").hidden = false;
+    cities.innerHTML = "";
+    SF.citiesOf(state, me()).forEach(function (id) {
+      var sq = SF.sq(id);
+      var here = state.projects.filter(function (p) { return p.city === id && p.owner === me(); });
+      var text = id + ", " + tName(sq) + ": " + (here.length ? here.map(function (p) {
+        return SF.projectName(p) + " in " + p.turnsLeft + (p.turnsLeft === 1 ? " turn" : " turns");
+      }).join(", ") : "nothing in production");
+      menuItem(cities, text, function () { openSquare(id); });
+    });
+  }
+
   // ---------- Cities ----------
   function renderCities() {
     fillCities("your-cities", me());
@@ -1537,7 +1637,7 @@
     var r = SF.researchOf(state, me());
     var saved = state.econ[me()].science;
     var perTurn = SF.income(state, me()).science;
-    box.appendChild(el("h3", "Research"));
+    box.appendChild(focusable(el("h3", "Research"), "research-heading"));
     if (!r.queue.length) {
       box.appendChild(el("p", "Science saved: " + saved + ". Your research queue is empty, so your science is being saved until you add something."));
     } else {
@@ -1661,6 +1761,7 @@
     var problem = SF.abilityProblem(state, me());
     var ab = el("button", ability.name, "act");
     ab.type = "button";
+    ab.id = "ability-btn";
     if (problem) {
       ab.setAttribute("aria-disabled", "true");
       ab.setAttribute("aria-label", ability.name + ", not available. " + problem);
@@ -1685,7 +1786,7 @@
       box.appendChild(el("p", "Your orders are locked in. Unlock them to change your workforce, research, or production."));
       return;
     }
-    box.appendChild(el("h3", "Workforce"));
+    box.appendChild(focusable(el("h3", "Workforce"), "workforce-heading"));
     var form = el("form", undefined, "order-form");
     var pickers = {};
     SF.JOB_ORDER.forEach(function (j) {
@@ -1795,6 +1896,7 @@
     renderNation();
     renderOrders();
     renderCities();
+    renderTurnMenu();
   }
 
   function renderSetup() {
@@ -2106,6 +2208,9 @@
   });
   $("lock-btn").addEventListener("click", lockIn);
   $("next-btn").addEventListener("click", nextWaiting);
+  [].forEach.call(document.querySelectorAll(".back-to-menu"), function (b) {
+    b.addEventListener("click", function () { $("turn-menu-heading").focus(); });
+  });
   $("quit-btn").addEventListener("click", function () {
     if (state && state.mode === "online") {
       if (!window.confirm("Leave this online game? You can rejoin on this device by typing its code under Join game.")) return;
